@@ -105,6 +105,23 @@ export const useSessionStore = defineStore('session', () => {
     const update = notification.update;
     
     switch (update.sessionUpdate) {
+      case 'user_message_chunk':
+        // Append to last user message or create new (for replay)
+        const lastUserMsg = messages.value[messages.value.length - 1];
+        if (lastUserMsg && lastUserMsg.role === 'user') {
+          if (update.content.type === 'text') {
+            lastUserMsg.content += update.content.text;
+          }
+        } else {
+          messages.value.push({
+            id: crypto.randomUUID(),
+            role: 'user',
+            content: update.content.type === 'text' ? update.content.text : '',
+            timestamp: Date.now(),
+          });
+        }
+        break;
+
       case 'agent_message_chunk':
         // Append to last assistant message or create new
         const lastMsg = messages.value[messages.value.length - 1];
@@ -424,6 +441,10 @@ export const useSessionStore = defineStore('session', () => {
       // Store available auth methods for potential retry
       const availableAuthMethods = initResponse.authMethods || [];
 
+      // Clear messages BEFORE loadSession - the agent will stream replay via notifications
+      messages.value = [];
+      toolCalls.value.clear();
+
       // Try to load existing session - may fail with auth_required
       try {
         await acpClient.loadSession({
@@ -467,8 +488,7 @@ export const useSessionStore = defineStore('session', () => {
 
       currentSession.value = savedSession;
       isConnected.value = true;
-      messages.value = [];
-      toolCalls.value.clear();
+      // Messages already populated by session/update notifications during loadSession
 
       // Track successful session resume
       trackEvent('SessionResumed', { agentName: savedSession.agentName, success: 'true' });
