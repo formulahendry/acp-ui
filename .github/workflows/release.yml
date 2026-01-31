@@ -12,6 +12,11 @@ on:
         required: false
         type: boolean
         default: false
+      skip_version_update:
+        description: 'Skip version update (use when re-running after failed build)'
+        required: false
+        type: boolean
+        default: false
   push:
     tags:
       - 'v*'
@@ -22,7 +27,7 @@ env:
 jobs:
   # Update version in all config files (only for workflow_dispatch)
   update-version:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && !inputs.skip_version_update
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -82,7 +87,7 @@ jobs:
   # Build for all platforms
   build:
     needs: [update-version, get-version]
-    if: always() && (needs.update-version.result == 'success' || needs.get-version.result == 'success')
+    if: always() && (needs.update-version.result == 'success' || needs.get-version.result == 'success' || needs.update-version.result == 'skipped')
     permissions:
       contents: write
     strategy:
@@ -142,8 +147,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: v${{ needs.update-version.outputs.version || needs.get-version.outputs.version }}
-          releaseName: 'ACP UI v${{ needs.update-version.outputs.version || needs.get-version.outputs.version }}'
+          tagName: v${{ needs.update-version.outputs.version || needs.get-version.outputs.version || inputs.version }}
+          releaseName: 'ACP UI v${{ needs.update-version.outputs.version || needs.get-version.outputs.version || inputs.version }}'
           releaseBody: |
             ## What's New
             
@@ -152,15 +157,16 @@ jobs:
             ### Downloads
             - **Windows**: `.msi` (installer) or `.exe` (NSIS)
             - **macOS**: `.dmg` (Intel or Apple Silicon)
-            - **Linux x64**: `.deb` or `.AppImage`
-            - **Linux ARM64**: `.deb` or `.AppImage`
+            - **Linux x64**: `.deb`, `.rpm`, or `.AppImage`
+            - **Linux ARM64**: `.deb`, `.rpm`, or `.AppImage`
           releaseDraft: true
           prerelease: ${{ github.event_name == 'workflow_dispatch' && inputs.prerelease || false }}
           args: ${{ matrix.args }}
 
   # Publish the release after all builds complete
   publish:
-    needs: build
+    needs: [build, update-version, get-version]
+    if: always() && needs.build.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -173,7 +179,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          VERSION="${{ needs.update-version.outputs.version || needs.get-version.outputs.version }}"
+          VERSION="${{ needs.update-version.outputs.version || needs.get-version.outputs.version || inputs.version }}"
           if [ -z "$VERSION" ]; then
             VERSION="${GITHUB_REF#refs/tags/v}"
           fi
