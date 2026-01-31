@@ -2,6 +2,7 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import { load, Store } from '@tauri-apps/plugin-store';
+import { getVersion } from '@tauri-apps/api/app';
 import { trackEvent, trackError } from '../lib/telemetry';
 import type { SavedSession, ChatMessage, ToolCallInfo, PermissionRequest, SessionMode } from '../lib/types';
 import { AcpClientBridge, createAcpClient } from '../lib/acp-bridge';
@@ -10,6 +11,9 @@ import type { SessionNotification, AuthMethod } from '@agentclientprotocol/sdk';
 
 const STORE_PATH = 'sessions.json';
 const PROTOCOL_VERSION = 1;
+
+// App version (loaded once at startup)
+let appVersion = '0.1.0';
 
 // Startup phase detection patterns
 function detectPhase(line: string): string | null {
@@ -79,6 +83,13 @@ export const useSessionStore = defineStore('session', () => {
     const saved = await store.get<SavedSession[]>('sessions');
     if (saved) {
       savedSessions.value = saved;
+    }
+    
+    // Load app version from Tauri
+    try {
+      appVersion = await getVersion();
+    } catch (e) {
+      console.warn('Failed to get app version:', e);
     }
   }
 
@@ -257,7 +268,7 @@ export const useSessionStore = defineStore('session', () => {
         clientInfo: {
           name: 'acp-ui',
           title: 'ACP UI',
-          version: '0.1.0',
+          version: appVersion,
         },
       });
 
@@ -406,7 +417,7 @@ export const useSessionStore = defineStore('session', () => {
         clientInfo: {
           name: 'acp-ui',
           title: 'ACP UI',
-          version: '0.1.0',
+          version: appVersion,
         },
       });
 

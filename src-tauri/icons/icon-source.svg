@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <!-- Gradient for main node -->
+    <linearGradient id="mainGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#4DA6FF"/>
+      <stop offset="100%" style="stop-color:#0066CC"/>
+    </linearGradient>
+    <!-- Gradient for outer nodes -->
+    <linearGradient id="nodeGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#7C3AED"/>
+      <stop offset="100%" style="stop-color:#5B21B6"/>
+    </linearGradient>
+    <!-- Glow effect -->
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  
+  <!-- Background circle (optional, for visibility) -->
+  <circle cx="256" cy="256" r="240" fill="#1a1a2e"/>
+  
+  <!-- Connection lines -->
+  <g stroke="#4DA6FF" stroke-width="6" opacity="0.7" filter="url(#glow)">
+    <!-- Top node connection -->
+    <line x1="256" y1="256" x2="256" y2="80"/>
+    <!-- Top-right node connection -->
+    <line x1="256" y1="256" x2="408" y2="168"/>
+    <!-- Bottom-right node connection -->
+    <line x1="256" y1="256" x2="408" y2="344"/>
+    <!-- Bottom node connection -->
+    <line x1="256" y1="256" x2="256" y2="432"/>
+    <!-- Bottom-left node connection -->
+    <line x1="256" y1="256" x2="104" y2="344"/>
+    <!-- Top-left node connection -->
+    <line x1="256" y1="256" x2="104" y2="168"/>
+  </g>
+  
+  <!-- Outer nodes (agents) -->
+  <g filter="url(#glow)">
+    <!-- Top -->
+    <circle cx="256" cy="80" r="32" fill="url(#nodeGrad)"/>
+    <!-- Top-right -->
+    <circle cx="408" cy="168" r="32" fill="url(#nodeGrad)"/>
+    <!-- Bottom-right -->
+    <circle cx="408" cy="344" r="32" fill="url(#nodeGrad)"/>
+    <!-- Bottom -->
+    <circle cx="256" cy="432" r="32" fill="url(#nodeGrad)"/>
+    <!-- Bottom-left -->
+    <circle cx="104" cy="344" r="32" fill="url(#nodeGrad)"/>
+    <!-- Top-left -->
+    <circle cx="104" cy="168" r="32" fill="url(#nodeGrad)"/>
+  </g>
+  
+  <!-- Central node (client) - larger -->
+  <circle cx="256" cy="256" r="64" fill="url(#mainGrad)" filter="url(#glow)"/>
+  
+  <!-- Inner ring on central node -->
+  <circle cx="256" cy="256" r="48" fill="none" stroke="#ffffff" stroke-width="4" opacity="0.5"/>
+  
+  <!-- Center dot -->
+  <circle cx="256" cy="256" r="16" fill="#ffffff"/>
+</svg>
