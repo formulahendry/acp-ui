@@ -1,7 +1,7 @@
 use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher, EventKind};
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use indexmap::IndexMap;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -15,12 +15,12 @@ pub struct AgentConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentsConfig {
-    pub agents: HashMap<String, AgentConfig>,
+    pub agents: IndexMap<String, AgentConfig>,
 }
 
 impl Default for AgentsConfig {
     fn default() -> Self {
-        let mut agents = HashMap::new();
+        let mut agents = IndexMap::new();
         agents.insert(
             "GitHub Copilot".to_string(),
             AgentConfig {
@@ -28,6 +28,37 @@ impl Default for AgentsConfig {
                 args: vec![
                     "@github/copilot-language-server@latest".to_string(),
                     "--acp".to_string(),
+                ],
+            },
+        );
+        agents.insert(
+            "Claude Code".to_string(),
+            AgentConfig {
+                command: "npx".to_string(),
+                args: vec![
+                    "@anthropic-ai/claude-code@latest".to_string(),
+                    "--acp".to_string(),
+                ],
+            },
+        );
+        agents.insert(
+            "Gemini CLI".to_string(),
+            AgentConfig {
+                command: "npx".to_string(),
+                args: vec![
+                    "@google/gemini-cli@latest".to_string(),
+                    "--experimental-acp".to_string(),
+                ],
+            },
+        );
+        agents.insert(
+            "Qwen Code".to_string(),
+            AgentConfig {
+                command: "npx".to_string(),
+                args: vec![
+                    "@qwen-code/qwen-code@latest".to_string(),
+                    "--acp".to_string(),
+                    "--experimental-skills".to_string(),
                 ],
             },
         );
@@ -106,7 +137,7 @@ impl ConfigManager {
     pub fn remove_agent(&self, name: &str) -> Result<AgentsConfig, String> {
         {
             let mut agents_config = self.config.write();
-            agents_config.agents.remove(name);
+            agents_config.agents.shift_remove(name);
         }
         self.save()?;
         Ok(self.get_config())

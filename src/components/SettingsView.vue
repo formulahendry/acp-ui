@@ -89,6 +89,12 @@ async function handleSubmit() {
     return;
   }
 
+  // Validate agent name is not purely numeric (JavaScript object key ordering issue)
+  if (/^\d+$/.test(formName.value)) {
+    formError.value = 'Agent name cannot be purely numeric';
+    return;
+  }
+
   const args = parseArgs(formArgs.value);
   isSubmitting.value = true;
 
