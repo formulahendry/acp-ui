@@ -2,6 +2,8 @@
 
 A modern, cross-platform desktop client for the [Agent Client Protocol (ACP)](https://agentclientprotocol.com/). Connect to AI coding agents like GitHub Copilot, Claude Code, Gemini CLI, and Qwen Code from a unified interface.
 
+![ACP UI Screenshot](assets/screenshot.png)
+
 ## 📥 Installation
 
 Download the latest release for your platform from [GitHub Releases](https://github.com/formulahendry/acp-ui/releases):
