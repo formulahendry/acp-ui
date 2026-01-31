@@ -36,8 +36,7 @@ impl Default for AgentsConfig {
             AgentConfig {
                 command: "npx".to_string(),
                 args: vec![
-                    "@anthropic-ai/claude-code@latest".to_string(),
-                    "--acp".to_string(),
+                    "@zed-industries/claude-code-acp@latest".to_string(),
                 ],
             },
         );
