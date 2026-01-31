@@ -1,0 +1,50 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Tauri build artifacts
+src-tauri/target
+
+# Tauri generated files (mobile builds, schemas)
+src-tauri/gen/android
+src-tauri/gen/apple
+
+# Rust
+*.rs.bk
+Cargo.lock
+
+# Environment files (may contain secrets)
+.env
+.env.*
+!.env.example
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Editor directories and files
+.idea
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Build outputs
+*.exe
+*.msi
+*.dmg
+*.AppImage
+*.deb
+*.rpm
