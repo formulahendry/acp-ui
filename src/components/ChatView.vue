@@ -3,16 +3,36 @@ import { ref, computed, nextTick, watch } from 'vue';
 import { marked } from 'marked';
 import { useSessionStore } from '../stores/session';
 import ModePicker from './ModePicker.vue';
+import CommandPalette from './CommandPalette.vue';
+import type { SlashCommand } from '../lib/types';
 
 const sessionStore = useSessionStore();
 const inputText = ref('');
 const messagesContainer = ref<HTMLElement | null>(null);
+const commandPaletteRef = ref<InstanceType<typeof CommandPalette> | null>(null);
 
 const messages = computed(() => sessionStore.messageList);
 const isLoading = computed(() => sessionStore.isLoading);
 const currentSession = computed(() => sessionStore.currentSession);
 const availableModes = computed(() => sessionStore.availableModes);
 const currentModeId = computed(() => sessionStore.currentModeId);
+const availableCommands = computed(() => sessionStore.availableCommands);
+
+// Slash command state
+const showCommandPalette = computed(() => {
+  if (availableCommands.value.length === 0) return false;
+  const text = inputText.value;
+  // Show palette when input starts with "/" and cursor is after it
+  if (!text.startsWith('/')) return false;
+  // Don't show if there's a space (command already entered)
+  const spaceIndex = text.indexOf(' ');
+  return spaceIndex === -1;
+});
+
+const commandFilter = computed(() => {
+  if (!inputText.value.startsWith('/')) return '';
+  return inputText.value.slice(1); // Remove the leading "/"
+});
 
 // Auto-scroll to bottom when new messages arrive
 watch(messages, async () => {
@@ -35,10 +55,31 @@ async function handleSend() {
 }
 
 function handleKeyDown(event: KeyboardEvent) {
+  // Let CommandPalette handle navigation keys when visible
+  if (showCommandPalette.value && commandPaletteRef.value) {
+    if (['ArrowDown', 'ArrowUp', 'Enter', 'Tab', 'Escape'].includes(event.key)) {
+      commandPaletteRef.value.handleKeyDown(event);
+      return;
+    }
+  }
+  
   if (event.key === 'Enter' && !event.shiftKey) {
     event.preventDefault();
     handleSend();
   }
+}
+
+function handleCommandSelect(command: SlashCommand) {
+  // Replace current input with the command
+  if (command.hint) {
+    inputText.value = `/${command.name} `;
+  } else {
+    inputText.value = `/${command.name} `;
+  }
+}
+
+function handleCommandClose() {
+  // Just dismiss, keep the text
 }
 
 function handleCancel() {
@@ -142,9 +183,17 @@ function getStatusIcon(status: string): string {
     </div>
     
     <div class="input-container">
+      <CommandPalette
+        ref="commandPaletteRef"
+        :commands="availableCommands"
+        :filter="commandFilter"
+        :visible="showCommandPalette"
+        @select="handleCommandSelect"
+        @close="handleCommandClose"
+      />
       <textarea
         v-model="inputText"
-        placeholder="Type your message..."
+        :placeholder="availableCommands.length > 0 ? 'Type your message... (/ for commands)' : 'Type your message...'"
         :disabled="isLoading"
         @keydown="handleKeyDown"
         rows="3"
@@ -358,6 +407,7 @@ function getStatusIcon(status: string): string {
 }
 
 .input-container {
+  position: relative;
   display: flex;
   gap: 0.5rem;
   padding: 1rem;

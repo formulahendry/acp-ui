@@ -4,7 +4,7 @@ import { ref, computed } from 'vue';
 import { load, Store } from '@tauri-apps/plugin-store';
 import { getVersion } from '@tauri-apps/api/app';
 import { trackEvent, trackError } from '../lib/telemetry';
-import type { SavedSession, ChatMessage, ToolCallInfo, PermissionRequest, SessionMode } from '../lib/types';
+import type { SavedSession, ChatMessage, ToolCallInfo, PermissionRequest, SessionMode, SlashCommand } from '../lib/types';
 import { AcpClientBridge, createAcpClient } from '../lib/acp-bridge';
 import { spawnAgent, killAgent, onAgentStderr } from '../lib/tauri';
 import type { SessionNotification, AuthMethod } from '@agentclientprotocol/sdk';
@@ -53,6 +53,9 @@ export const useSessionStore = defineStore('session', () => {
   // Session modes
   const availableModes = ref<SessionMode[]>([]);
   const currentModeId = ref<string>('');
+  
+  // Slash commands
+  const availableCommands = ref<SlashCommand[]>([]);
   
   // Connection cancellation
   let connectionAborted = false;
@@ -187,6 +190,17 @@ export const useSessionStore = defineStore('session', () => {
         // Agent changed the mode
         if ('modeId' in update && update.modeId) {
           currentModeId.value = update.modeId as string;
+        }
+        break;
+
+      case 'available_commands_update':
+        // Agent advertised slash commands
+        if ('availableCommands' in update && Array.isArray(update.availableCommands)) {
+          availableCommands.value = update.availableCommands.map((cmd) => ({
+            name: cmd.name,
+            description: cmd.description,
+            hint: cmd.input?.hint ?? undefined,
+          }));
         }
         break;
 
@@ -626,6 +640,7 @@ export const useSessionStore = defineStore('session', () => {
     toolCalls.value.clear();
     availableModes.value = [];
     currentModeId.value = '';
+    availableCommands.value = [];
   }
 
   // Delete saved session
@@ -667,6 +682,7 @@ export const useSessionStore = defineStore('session', () => {
     pendingAuthAgentName,
     availableModes,
     currentModeId,
+    availableCommands,
     startupPhase,
     startupLogs,
     startupElapsed,

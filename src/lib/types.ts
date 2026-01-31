@@ -73,3 +73,10 @@ export interface SessionModeState {
   currentModeId: string;
   availableModes: SessionMode[];
 }
+
+// Slash Commands
+export interface SlashCommand {
+  name: string;
+  description: string;
+  hint?: string;
+}
