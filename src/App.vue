@@ -13,7 +13,7 @@ import SettingsView from './components/SettingsView.vue';
 import AuthMethodDialog from './components/AuthMethodDialog.vue';
 import TrafficMonitor from './components/TrafficMonitor.vue';
 import StartupProgress from './components/StartupProgress.vue';
-import type { SavedSession, PermissionRequest } from './lib/types';
+import type { SavedSession } from './lib/types';
 
 const configStore = useConfigStore();
 const sessionStore = useSessionStore();
@@ -34,12 +34,8 @@ const isConnecting = computed(() => sessionStore.isConnecting);
 const error = computed(() => sessionStore.error || configStore.error);
 const hasAgents = computed(() => configStore.hasAgents);
 
-// Watch for permission requests from ACP client
-const pendingPermission = computed(() => {
-  const client = sessionStore.acpClient as { pendingPermissionRequest: { value: unknown } } | null;
-  if (!client) return null;
-  return client.pendingPermissionRequest?.value as PermissionRequest | null;
-});
+// Watch for permission requests from session store
+const pendingPermission = computed(() => sessionStore.pendingPermission);
 
 // Watch for auth method selection requests
 const pendingAuthMethods = computed(() => sessionStore.pendingAuthMethods);

@@ -22,7 +22,7 @@ Download the latest release for your platform from [GitHub Releases](https://git
 - **Session Management** — Create, resume, and manage conversation sessions
 - **Rich Chat Interface** — Markdown rendering, syntax highlighting, tool call visualization
 - **Slash Commands** — Quick access to agent capabilities with `/command` syntax
-- **File Operations** — Read and write files with permission controls
+- **Permission Controls** — Approve or deny agent actions before execution
 - **Session Modes** — Switch between agent modes (ask, code, architect, etc.)
 - **Model Picker** — Select from available AI models (unstable API)
 - **Agent Thinking** — View the agent's reasoning process (collapsible)

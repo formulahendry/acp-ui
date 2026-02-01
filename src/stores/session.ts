@@ -1,6 +1,6 @@
 // Session store for managing ACP sessions and persistence
 import { defineStore } from 'pinia';
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { load, Store } from '@tauri-apps/plugin-store';
 import { getVersion } from '@tauri-apps/api/app';
 import { trackEvent, trackError } from '../lib/telemetry';
@@ -302,6 +302,15 @@ export const useSessionStore = defineStore('session', () => {
       // Create ACP client bridge
       acpClient = await createAcpClient(agentInstance);
       acpClient.onSessionUpdate = handleSessionUpdate;
+      
+      // Sync bridge's pendingPermissionRequest to store's pendingPermission
+      watch(
+        () => acpClient?.pendingPermissionRequest.value,
+        (newValue) => {
+          pendingPermission.value = newValue ?? null;
+        },
+        { immediate: true }
+      );
 
       if (connectionAborted) {
         await acpClient.disconnect();
@@ -471,6 +480,15 @@ export const useSessionStore = defineStore('session', () => {
       // Create ACP client bridge
       acpClient = await createAcpClient(agentInstance);
       acpClient.onSessionUpdate = handleSessionUpdate;
+      
+      // Sync bridge's pendingPermissionRequest to store's pendingPermission
+      watch(
+        () => acpClient?.pendingPermissionRequest.value,
+        (newValue) => {
+          pendingPermission.value = newValue ?? null;
+        },
+        { immediate: true }
+      );
 
       // Initialize connection
       const initResponse = await acpClient.initialize({

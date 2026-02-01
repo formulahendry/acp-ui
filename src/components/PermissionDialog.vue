@@ -125,15 +125,18 @@ function handleCancel() {
 
 .locations {
   margin-top: 0.75rem;
-  padding: 0.5rem;
-  background: var(--bg-code, #f5f5f5);
+  padding: 0.5rem 0.75rem;
+  background: var(--bg-hover, #f5f5f5);
   border-radius: 4px;
+  border: 1px solid var(--border-color, #e0e0e0);
 }
 
 .location {
   font-family: monospace;
   font-size: 0.8rem;
   padding: 0.125rem 0;
+  color: var(--text-primary, #333);
+  word-break: break-all;
 }
 
 .dialog-actions {
