@@ -24,6 +24,7 @@ Download the latest release for your platform from [GitHub Releases](https://git
 - **Slash Commands** — Quick access to agent capabilities with `/command` syntax
 - **File Operations** — Read and write files with permission controls
 - **Session Modes** — Switch between agent modes (ask, code, architect, etc.)
+- **Model Picker** — Select from available AI models (unstable API)
 - **Traffic Monitor** — Debug and inspect ACP protocol messages in real-time
 - **Hot-Reload Config** — Edit agent configurations without restarting
 - **Cross-Platform** — Windows, macOS (ARM/Intel), Linux (x64/ARM64)
@@ -34,10 +35,10 @@ ACP UI comes pre-configured with these agents:
 
 | Agent | Package |
 |-------|---------|
-| GitHub Copilot | `@github/copilot-language-server` |
-| Claude Code | `@zed-industries/claude-code-acp` |
-| Gemini CLI | `@google/gemini-cli` |
-| Qwen Code | `@qwen-code/qwen-code` |
+| [GitHub Copilot](https://github.com/github/copilot-language-server-release?tab=readme-ov-file#agent-client-protocol-acp-preview) | `@github/copilot-language-server` |
+| [Claude Code](https://github.com/zed-industries/claude-code-acp) | `@zed-industries/claude-code-acp` |
+| [Gemini CLI](https://github.com/google-gemini/gemini-cli) | `@google/gemini-cli` |
+| [Qwen Code](https://github.com/QwenLM/qwen-code) | `@qwen-code/qwen-code` |
 
 ## 🛠️ Configuration
 
@@ -113,7 +114,6 @@ npm run tauri build
 ## 🔗 Links
 
 - [Agent Client Protocol](https://agentclientprotocol.com/)
-- [ACP Registry](https://cdn.agentclientprotocol.com/registry/v1/latest/registry.json)
 - [Tauri Documentation](https://tauri.app/)
 
 ## 📄 License
