@@ -25,6 +25,7 @@ Download the latest release for your platform from [GitHub Releases](https://git
 - **File Operations** — Read and write files with permission controls
 - **Session Modes** — Switch between agent modes (ask, code, architect, etc.)
 - **Model Picker** — Select from available AI models (unstable API)
+- **Agent Thinking** — View the agent's reasoning process (collapsible)
 - **Traffic Monitor** — Debug and inspect ACP protocol messages in real-time
 - **Hot-Reload Config** — Edit agent configurations without restarting
 - **Cross-Platform** — Windows, macOS (ARM/Intel), Linux (x64/ARM64)
