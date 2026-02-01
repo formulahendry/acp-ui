@@ -12,6 +12,9 @@ const inputText = ref('');
 const messagesContainer = ref<HTMLElement | null>(null);
 const commandPaletteRef = ref<InstanceType<typeof CommandPalette> | null>(null);
 
+// Track expanded thought sections by message id
+const expandedThoughts = ref<Set<string>>(new Set());
+
 const messages = computed(() => sessionStore.messageList);
 const isLoading = computed(() => sessionStore.isLoading);
 const currentSession = computed(() => sessionStore.currentSession);
@@ -105,6 +108,18 @@ async function handleModelChange(modelId: string) {
   }
 }
 
+function isThoughtExpanded(messageId: string): boolean {
+  return expandedThoughts.value.has(messageId);
+}
+
+function toggleThought(messageId: string): void {
+  if (expandedThoughts.value.has(messageId)) {
+    expandedThoughts.value.delete(messageId);
+  } else {
+    expandedThoughts.value.add(messageId);
+  }
+}
+
 function renderMarkdown(content: string): string {
   return marked.parse(content, { async: false }) as string;
 }
@@ -167,7 +182,19 @@ function getStatusIcon(status: string): string {
           <span class="role">{{ message.role === 'user' ? 'You' : 'Assistant' }}</span>
         </div>
         
-        <!-- Tool calls for this message (shown before content) -->
+        <!-- Agent thinking section (collapsible) - shown first to explain reasoning -->
+        <div v-if="message.thought && message.role === 'assistant'" class="thought-section">
+          <button class="thought-toggle" @click="toggleThought(message.id)">
+            <span class="thought-icon">💭</span>
+            <span class="thought-label">{{ isThoughtExpanded(message.id) ? 'Hide Thinking' : 'Show Thinking' }}</span>
+            <span class="thought-chevron">{{ isThoughtExpanded(message.id) ? '▲' : '▼' }}</span>
+          </button>
+          <div v-if="isThoughtExpanded(message.id)" class="thought-content">
+            <div v-html="renderMarkdown(message.thought)" />
+          </div>
+        </div>
+        
+        <!-- Tool calls for this message (shown after thinking) -->
         <div v-if="message.toolCalls?.length" class="tool-calls-section">
           <div 
             v-for="tc in message.toolCalls" 
@@ -466,5 +493,72 @@ textarea:focus {
 .send-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* Agent Thinking Section */
+.thought-section {
+  margin-bottom: 0.75rem;
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.thought-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  background: var(--bg-hover, #f5f5f5);
+  border: none;
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--text-muted, #666);
+  text-align: left;
+  transition: background 0.15s ease;
+}
+
+.thought-toggle:hover {
+  background: var(--bg-user, #e3f2fd);
+}
+
+.thought-icon {
+  font-size: 1rem;
+  flex-shrink: 0;
+}
+
+.thought-label {
+  flex: 1;
+  font-weight: 500;
+}
+
+.thought-chevron {
+  font-size: 0.7rem;
+  color: var(--text-muted, #999);
+}
+
+.thought-content {
+  padding: 0.75rem 1rem 0.75rem 1.25rem;
+  background: var(--bg-main, #fafafa);
+  border-top: 1px solid var(--border-color, #e0e0e0);
+  font-size: 0.9rem;
+  color: var(--text-muted, #666);
+  font-style: italic;
+  line-height: 1.5;
+}
+
+.thought-content :deep(p) {
+  margin: 0 0 0.5rem 0;
+}
+
+.thought-content :deep(p:last-child) {
+  margin-bottom: 0;
+}
+
+.thought-content :deep(code) {
+  background: var(--bg-hover, #f0f0f0);
+  padding: 0.125rem 0.25rem;
+  border-radius: 3px;
+  font-size: 0.85em;
 }
 </style>

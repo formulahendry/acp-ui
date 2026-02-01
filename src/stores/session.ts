@@ -147,6 +147,25 @@ export const useSessionStore = defineStore('session', () => {
         }
         break;
 
+      case 'agent_thought_chunk':
+        // Append to last assistant message's thought field or create new
+        const lastAssistantMsg = messages.value[messages.value.length - 1];
+        if (lastAssistantMsg && lastAssistantMsg.role === 'assistant') {
+          if (update.content.type === 'text') {
+            lastAssistantMsg.thought = (lastAssistantMsg.thought || '') + update.content.text;
+          }
+        } else {
+          messages.value.push({
+            id: crypto.randomUUID(),
+            role: 'assistant',
+            content: '',
+            thought: update.content.type === 'text' ? update.content.text : '',
+            timestamp: Date.now(),
+            toolCalls: [],
+          });
+        }
+        break;
+
       case 'tool_call':
         // Add tool call to the current assistant message
         const currentAssistantMsg = messages.value[messages.value.length - 1];
