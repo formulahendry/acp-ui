@@ -80,3 +80,10 @@ export interface SlashCommand {
   description: string;
   hint?: string;
 }
+
+// Models
+export interface ModelInfo {
+  modelId: string;
+  name: string;
+  description?: string;
+}

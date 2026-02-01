@@ -274,6 +274,10 @@ export class AcpClientBridge implements Client {
     await this.sendRequest('session/set_mode', params);
   }
 
+  async unstable_setSessionModel(params: { sessionId: string; modelId: string }): Promise<void> {
+    await this.sendRequest('session/set_model', params);
+  }
+
   async authenticate(params: AuthenticateRequest): Promise<AuthenticateResponse> {
     return this.sendRequest<AuthenticateResponse>('authenticate', params);
   }

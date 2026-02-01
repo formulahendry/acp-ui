@@ -4,7 +4,7 @@ import { ref, computed } from 'vue';
 import { load, Store } from '@tauri-apps/plugin-store';
 import { getVersion } from '@tauri-apps/api/app';
 import { trackEvent, trackError } from '../lib/telemetry';
-import type { SavedSession, ChatMessage, ToolCallInfo, PermissionRequest, SessionMode, SlashCommand } from '../lib/types';
+import type { SavedSession, ChatMessage, ToolCallInfo, PermissionRequest, SessionMode, SlashCommand, ModelInfo } from '../lib/types';
 import { AcpClientBridge, createAcpClient } from '../lib/acp-bridge';
 import { spawnAgent, killAgent, onAgentStderr } from '../lib/tauri';
 import type { SessionNotification, AuthMethod } from '@agentclientprotocol/sdk';
@@ -56,6 +56,10 @@ export const useSessionStore = defineStore('session', () => {
   
   // Slash commands
   const availableCommands = ref<SlashCommand[]>([]);
+  
+  // Session models
+  const availableModels = ref<ModelInfo[]>([]);
+  const currentModelId = ref<string>('');
   
   // Connection cancellation
   let connectionAborted = false;
@@ -401,6 +405,19 @@ export const useSessionStore = defineStore('session', () => {
         currentModeId.value = '';
       }
 
+      // Set up session models if available
+      if (sessionResponse.models) {
+        availableModels.value = (sessionResponse.models.availableModels || []).map(m => ({
+          modelId: m.modelId,
+          name: m.name,
+          description: m.description ?? undefined,
+        }));
+        currentModelId.value = sessionResponse.models.currentModelId || '';
+      } else {
+        availableModels.value = [];
+        currentModelId.value = '';
+      }
+
     } catch (e) {
       error.value = e instanceof Error ? e.message : String(e);
       acpClient = null;
@@ -641,6 +658,8 @@ export const useSessionStore = defineStore('session', () => {
     availableModes.value = [];
     currentModeId.value = '';
     availableCommands.value = [];
+    availableModels.value = [];
+    currentModelId.value = '';
   }
 
   // Delete saved session
@@ -664,6 +683,21 @@ export const useSessionStore = defineStore('session', () => {
     currentModeId.value = modeId;
   }
 
+  // Set session model
+  async function setModel(modelId: string): Promise<void> {
+    if (!acpClient || !currentSession.value) {
+      throw new Error('No active session');
+    }
+    
+    await acpClient.unstable_setSessionModel({
+      sessionId: currentSession.value.sessionId,
+      modelId,
+    });
+    
+    // Optimistically update the current model
+    currentModelId.value = modelId;
+  }
+
   function clearError() {
     error.value = null;
   }
@@ -683,6 +717,8 @@ export const useSessionStore = defineStore('session', () => {
     availableModes,
     currentModeId,
     availableCommands,
+    availableModels,
+    currentModelId,
     startupPhase,
     startupLogs,
     startupElapsed,
@@ -707,6 +743,7 @@ export const useSessionStore = defineStore('session', () => {
     disconnect,
     deleteSession,
     setMode,
+    setModel,
     clearError,
     
     // Expose client for permission handling

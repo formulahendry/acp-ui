@@ -3,6 +3,7 @@ import { ref, computed, nextTick, watch } from 'vue';
 import { marked } from 'marked';
 import { useSessionStore } from '../stores/session';
 import ModePicker from './ModePicker.vue';
+import ModelPicker from './ModelPicker.vue';
 import CommandPalette from './CommandPalette.vue';
 import type { SlashCommand } from '../lib/types';
 
@@ -16,6 +17,8 @@ const isLoading = computed(() => sessionStore.isLoading);
 const currentSession = computed(() => sessionStore.currentSession);
 const availableModes = computed(() => sessionStore.availableModes);
 const currentModeId = computed(() => sessionStore.currentModeId);
+const availableModels = computed(() => sessionStore.availableModels);
+const currentModelId = computed(() => sessionStore.currentModelId);
 const availableCommands = computed(() => sessionStore.availableCommands);
 
 // Slash command state
@@ -94,6 +97,14 @@ async function handleModeChange(modeId: string) {
   }
 }
 
+async function handleModelChange(modelId: string) {
+  try {
+    await sessionStore.setModel(modelId);
+  } catch (e) {
+    console.error('Failed to change model:', e);
+  }
+}
+
 function renderMarkdown(content: string): string {
   return marked.parse(content, { async: false }) as string;
 }
@@ -128,6 +139,13 @@ function getStatusIcon(status: string): string {
     <div class="chat-header">
       <h2>{{ currentSession?.title || 'Chat' }}</h2>
       <div class="header-right">
+        <ModelPicker 
+          v-if="availableModels.length > 0"
+          :models="availableModels"
+          :current-model-id="currentModelId"
+          :disabled="isLoading"
+          @change="handleModelChange"
+        />
         <ModePicker 
           v-if="availableModes.length > 0"
           :modes="availableModes"
