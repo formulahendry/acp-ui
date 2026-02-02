@@ -2,6 +2,7 @@
 import { ref, computed } from 'vue';
 import { useConfigStore } from '../stores/config';
 import { addAgent, removeAgent, updateAgent } from '../lib/tauri';
+import EnvVarEditor from './EnvVarEditor.vue';
 
 const emit = defineEmits<{
   (e: 'close'): void;
@@ -14,6 +15,7 @@ const agents = computed(() => {
     name,
     command: config.command,
     args: config.args.join(' '),
+    env: config.env || {},
   }));
 });
 
@@ -23,6 +25,7 @@ const editingAgent = ref<string | null>(null);
 const formName = ref('');
 const formCommand = ref('');
 const formArgs = ref('');
+const formEnv = ref<Record<string, string>>({});
 const formError = ref('');
 const isSubmitting = ref(false);
 
@@ -30,6 +33,7 @@ function resetForm() {
   formName.value = '';
   formCommand.value = '';
   formArgs.value = '';
+  formEnv.value = {};
   formError.value = '';
   showAddForm.value = false;
   editingAgent.value = null;
@@ -40,12 +44,13 @@ function startAdd() {
   showAddForm.value = true;
 }
 
-function startEdit(agent: { name: string; command: string; args: string }) {
+function startEdit(agent: { name: string; command: string; args: string; env: Record<string, string> }) {
   resetForm();
   editingAgent.value = agent.name;
   formName.value = agent.name;
   formCommand.value = agent.command;
   formArgs.value = agent.args;
+  formEnv.value = { ...agent.env };
 }
 
 function parseArgs(argsString: string): string[] {
@@ -100,7 +105,7 @@ async function handleSubmit() {
 
   try {
     if (editingAgent.value) {
-      const newConfig = await updateAgent(formName.value, formCommand.value, args);
+      const newConfig = await updateAgent(formName.value, formCommand.value, args, formEnv.value);
       configStore.updateFromEvent(newConfig);
     } else {
       // Check for duplicates
@@ -109,7 +114,7 @@ async function handleSubmit() {
         isSubmitting.value = false;
         return;
       }
-      const newConfig = await addAgent(formName.value, formCommand.value, args);
+      const newConfig = await addAgent(formName.value, formCommand.value, args, formEnv.value);
       configStore.updateFromEvent(newConfig);
     }
     resetForm();
@@ -180,6 +185,10 @@ async function handleDelete(name: string) {
                 placeholder="-y @example/agent"
               />
               <small>Space-separated. Use quotes for args with spaces.</small>
+            </div>
+
+            <div class="form-group">
+              <EnvVarEditor v-model="formEnv" />
             </div>
 
             <div v-if="formError" class="form-error">

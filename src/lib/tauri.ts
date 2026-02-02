@@ -34,9 +34,10 @@ export async function listRunningAgents(): Promise<string[]> {
 export async function addAgent(
   name: string,
   command: string,
-  args: string[]
+  args: string[],
+  env: Record<string, string> = {}
 ): Promise<AgentsConfig> {
-  return invoke<AgentsConfig>('add_agent', { name, command, args });
+  return invoke<AgentsConfig>('add_agent', { name, command, args, env });
 }
 
 export async function removeAgent(name: string): Promise<AgentsConfig> {
@@ -46,9 +47,10 @@ export async function removeAgent(name: string): Promise<AgentsConfig> {
 export async function updateAgent(
   name: string,
   command: string,
-  args: string[]
+  args: string[],
+  env: Record<string, string> = {}
 ): Promise<AgentsConfig> {
-  return invoke<AgentsConfig>('update_agent', { name, command, args });
+  return invoke<AgentsConfig>('update_agent', { name, command, args, env });
 }
 
 // Event listeners

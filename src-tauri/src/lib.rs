@@ -81,13 +81,14 @@ fn add_agent(
     name: String,
     command: String,
     args: Vec<String>,
+    env: std::collections::HashMap<String, String>,
     state: State<AppState>,
 ) -> Result<AgentsConfig, String> {
     let config_manager = state.config_manager.read();
     config_manager
         .as_ref()
         .ok_or_else(|| "Config manager not initialized".to_string())?
-        .add_agent(name, AgentConfig { command, args })
+        .add_agent(name, AgentConfig { command, args, env })
 }
 
 #[tauri::command]
@@ -104,13 +105,14 @@ fn update_agent(
     name: String,
     command: String,
     args: Vec<String>,
+    env: std::collections::HashMap<String, String>,
     state: State<AppState>,
 ) -> Result<AgentsConfig, String> {
     let config_manager = state.config_manager.read();
     config_manager
         .as_ref()
         .ok_or_else(|| "Config manager not initialized".to_string())?
-        .update_agent(name, AgentConfig { command, args })
+        .update_agent(name, AgentConfig { command, args, env })
 }
 
 #[tauri::command]

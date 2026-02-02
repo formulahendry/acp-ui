@@ -3,6 +3,7 @@
 export interface AgentConfig {
   command: string;
   args: string[];
+  env?: Record<string, string>;
 }
 
 export interface AgentsConfig {

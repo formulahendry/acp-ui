@@ -26,6 +26,7 @@ Download the latest release for your platform from [GitHub Releases](https://git
 - **Session Modes** — Switch between agent modes (ask, code, architect, etc.)
 - **Model Picker** — Select from available AI models (unstable API)
 - **Agent Thinking** — View the agent's reasoning process (collapsible)
+- **Environment Variables** — Configure per-agent environment variables (API keys, settings)
 - **Traffic Monitor** — Debug and inspect ACP protocol messages in real-time
 - **Hot-Reload Config** — Edit agent configurations without restarting
 - **Cross-Platform** — Windows, macOS (ARM/Intel), Linux (x64/ARM64)
@@ -58,23 +59,31 @@ Agent configurations are stored in:
   "agents": {
     "GitHub Copilot": {
       "command": "npx",
-      "args": ["@github/copilot-language-server@latest", "--acp"]
+      "args": ["@github/copilot-language-server@latest", "--acp"],
+      "env": {}
     },
     "Claude Code": {
       "command": "npx",
-      "args": ["@zed-industries/claude-code-acp@latest"]
+      "args": ["@zed-industries/claude-code-acp@latest"],
+      "env": {
+        "ANTHROPIC_API_KEY": "sk-ant-..."
+      }
     },
     "Gemini CLI": {
       "command": "npx",
-      "args": ["@google/gemini-cli@latest", "--experimental-acp"]
+      "args": ["@google/gemini-cli@latest", "--experimental-acp"],
+      "env": {}
     },
     "Qwen Code": {
       "command": "npx",
-      "args": ["@qwen-code/qwen-code@latest", "--acp", "--experimental-skills"]
+      "args": ["@qwen-code/qwen-code@latest", "--acp", "--experimental-skills"],
+      "env": {}
     }
   }
 }
 ```
+
+> **Note**: Environment variables are passed to the agent process on startup. Use these for API keys, custom settings, or overriding default behavior.
 
 ## 📖 Usage
 

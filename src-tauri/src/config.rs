@@ -11,6 +11,8 @@ use tauri::{AppHandle, Emitter};
 pub struct AgentConfig {
     pub command: String,
     pub args: Vec<String>,
+    #[serde(default)]
+    pub env: std::collections::HashMap<String, String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -29,6 +31,7 @@ impl Default for AgentsConfig {
                     "@github/copilot-language-server@latest".to_string(),
                     "--acp".to_string(),
                 ],
+                env: std::collections::HashMap::new(),
             },
         );
         agents.insert(
@@ -38,6 +41,7 @@ impl Default for AgentsConfig {
                 args: vec![
                     "@zed-industries/claude-code-acp@latest".to_string(),
                 ],
+                env: std::collections::HashMap::new(),
             },
         );
         agents.insert(
@@ -48,6 +52,7 @@ impl Default for AgentsConfig {
                     "@google/gemini-cli@latest".to_string(),
                     "--experimental-acp".to_string(),
                 ],
+                env: std::collections::HashMap::new(),
             },
         );
         agents.insert(
@@ -59,6 +64,7 @@ impl Default for AgentsConfig {
                     "--acp".to_string(),
                     "--experimental-skills".to_string(),
                 ],
+                env: std::collections::HashMap::new(),
             },
         );
         AgentsConfig { agents }

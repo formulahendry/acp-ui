@@ -63,6 +63,7 @@ impl AgentManager {
             cmd.arg("/C")
                 .arg(&config.command)
                 .args(&config.args)
+                .envs(&config.env)
                 .stdin(Stdio::piped())
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
@@ -74,6 +75,7 @@ impl AgentManager {
         #[cfg(not(target_os = "windows"))]
         let mut child = Command::new(&config.command)
             .args(&config.args)
+            .envs(&config.env)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
