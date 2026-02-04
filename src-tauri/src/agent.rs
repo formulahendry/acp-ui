@@ -78,16 +78,19 @@ impl AgentManager {
         // On macOS/Unix, we need to use /bin/sh -c to properly resolve commands in PATH
         #[cfg(not(target_os = "windows"))]
         let mut child = {
-            // Build shell command with proper quoting for arguments
+            use std::borrow::Cow;
+
+            // Build shell command with proper quoting for command and arguments
+            let escaped_command = shell_escape::escape(Cow::Borrowed(config.command.as_str()));
             let shell_command = if config.args.is_empty() {
-                config.command.clone()
+                escaped_command.to_string()
             } else {
                 let quoted_args: Vec<String> = config
                     .args
                     .iter()
-                    .map(|arg| shell_escape::escape(std::borrow::Cow::Borrowed(arg)).to_string())
+                    .map(|arg| shell_escape::escape(Cow::Borrowed(arg.as_str())).to_string())
                     .collect();
-                format!("{} {}", config.command, quoted_args.join(" "))
+                format!("{} {}", escaped_command, quoted_args.join(" "))
             };
 
             Command::new("/bin/sh")
