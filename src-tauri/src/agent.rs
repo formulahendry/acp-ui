@@ -75,7 +75,6 @@ impl AgentManager {
                 .map_err(|e| format!("Failed to spawn agent: {}", e))?
         };
 
-        // On macOS/Unix, we need to use /bin/sh -c to properly resolve commands in PATH
         #[cfg(not(target_os = "windows"))]
         let mut child = {
             use std::borrow::Cow;
@@ -167,7 +166,10 @@ impl AgentManager {
         let running_agent = RunningAgent { child, stdin };
         self.agents.write().insert(agent_id.clone(), running_agent);
 
-        Ok(AgentInstance { id: agent_id, name })
+        Ok(AgentInstance {
+            id: agent_id,
+            name,
+        })
     }
 
     pub fn send_message(&self, agent_id: &str, message: &str) -> Result<(), String> {
