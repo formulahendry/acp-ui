@@ -32,4 +32,5 @@ uuid = { version = "1", features = ["v4"] }
 parking_lot = "0.12"
 machine-uid = "0.5"
 indexmap = { version = "2", features = ["serde"] }
+shell-escape = "0.1"
 

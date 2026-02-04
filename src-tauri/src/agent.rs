@@ -11,6 +11,9 @@ use uuid::Uuid;
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 
+#[cfg(not(target_os = "windows"))]
+use shell_escape;
+
 use crate::config::AgentConfig;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -72,15 +75,31 @@ impl AgentManager {
                 .map_err(|e| format!("Failed to spawn agent: {}", e))?
         };
 
+        // On macOS/Unix, we need to use /bin/sh -c to properly resolve commands in PATH
         #[cfg(not(target_os = "windows"))]
-        let mut child = Command::new(&config.command)
-            .args(&config.args)
-            .envs(&config.env)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|e| format!("Failed to spawn agent: {}", e))?;
+        let mut child = {
+            // Build shell command with proper quoting for arguments
+            let shell_command = if config.args.is_empty() {
+                config.command.clone()
+            } else {
+                let quoted_args: Vec<String> = config
+                    .args
+                    .iter()
+                    .map(|arg| shell_escape::escape(std::borrow::Cow::Borrowed(arg)).to_string())
+                    .collect();
+                format!("{} {}", config.command, quoted_args.join(" "))
+            };
+
+            Command::new("/bin/sh")
+                .arg("-c")
+                .arg(&shell_command)
+                .envs(&config.env)
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .map_err(|e| format!("Failed to spawn agent: {}", e))?
+        };
 
         let stdin = child
             .stdin
@@ -145,10 +164,7 @@ impl AgentManager {
         let running_agent = RunningAgent { child, stdin };
         self.agents.write().insert(agent_id.clone(), running_agent);
 
-        Ok(AgentInstance {
-            id: agent_id,
-            name,
-        })
+        Ok(AgentInstance { id: agent_id, name })
     }
 
     pub fn send_message(&self, agent_id: &str, message: &str) -> Result<(), String> {
