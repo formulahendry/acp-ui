@@ -78,6 +78,7 @@ impl AgentManager {
         #[cfg(not(target_os = "windows"))]
         let mut child = {
             use std::borrow::Cow;
+            use std::env;
 
             // Build shell command with proper quoting for command and arguments
             let escaped_command = shell_escape::escape(Cow::Borrowed(config.command.as_str()));
@@ -92,7 +93,12 @@ impl AgentManager {
                 format!("{} {}", escaped_command, quoted_args.join(" "))
             };
 
-            Command::new("/bin/sh")
+            // Use login shell to get full PATH environment (especially important on macOS)
+            // This ensures commands like npx, node, claude etc. are found
+            let shell = env::var("SHELL").unwrap_or_else(|_| "/bin/sh".to_string());
+
+            Command::new(shell)
+                .arg("-l")  // login shell to load user's profile and PATH
                 .arg("-c")
                 .arg(&shell_command)
                 .envs(&config.env)
