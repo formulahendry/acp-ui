@@ -78,6 +78,7 @@ impl AgentManager {
         #[cfg(not(target_os = "windows"))]
         let mut child = {
             use std::borrow::Cow;
+            use std::env;
 
             // Build shell command with proper quoting for command and arguments
             let escaped_command = shell_escape::escape(Cow::Borrowed(config.command.as_str()));
@@ -92,10 +93,27 @@ impl AgentManager {
                 format!("{} {}", escaped_command, quoted_args.join(" "))
             };
 
-            Command::new("/bin/sh")
-                .arg("-c")
-                .arg(&shell_command)
-                .envs(&config.env)
+            let mut cmd = Command::new("/bin/sh");
+            cmd.arg("-c").arg(&shell_command);
+
+            #[cfg(target_os = "macos")]
+            {
+                if !config.env.contains_key("PATH") {
+                    let existing_path = env::var("PATH").unwrap_or_default();
+                    let mut path_entries: Vec<&str> = existing_path
+                        .split(':')
+                        .filter(|s| !s.is_empty())
+                        .collect();
+                    for extra in ["/opt/homebrew/bin", "/usr/local/bin"] {
+                        if !path_entries.iter().any(|p| p == &extra) {
+                            path_entries.push(extra);
+                        }
+                    }
+                    cmd.env("PATH", path_entries.join(":"));
+                }
+            }
+
+            cmd.envs(&config.env)
                 .stdin(Stdio::piped())
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
