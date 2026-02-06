@@ -92,8 +92,34 @@ impl AgentManager {
                 format!("{} {}", escaped_command, quoted_args.join(" "))
             };
 
-            Command::new("/bin/sh")
-                .arg("-c")
+            // Determine shell and whether it supports -l (login) flag
+            // bash, zsh, ksh support -l; fish, tcsh, csh, dash do not
+            let user_shell = std::env::var("SHELL").unwrap_or_default();
+            let shell_name = std::path::Path::new(&user_shell)
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or("");
+
+            let (shell, use_login_flag) = match shell_name {
+                "bash" | "zsh" | "ksh" => (user_shell.as_str(), true),
+                "fish" => (user_shell.as_str(), false), // fish auto-loads config
+                _ => {
+                    // Probe for bash at common paths, fall back to /bin/sh (common default on Unix-like systems)
+                    if std::path::Path::new("/bin/bash").exists() {
+                        ("/bin/bash", true)
+                    } else if std::path::Path::new("/usr/bin/bash").exists() {
+                        ("/usr/bin/bash", true)
+                    } else {
+                        ("/bin/sh", false) // /bin/sh may be dash; don't use -l
+                    }
+                }
+            };
+
+            let mut cmd = Command::new(shell);
+            if use_login_flag {
+                cmd.arg("-l"); // login shell to source user's profile
+            }
+            cmd.arg("-c")
                 .arg(&shell_command)
                 .envs(&config.env)
                 .stdin(Stdio::piped())
