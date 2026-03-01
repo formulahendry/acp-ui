@@ -1,6 +1,6 @@
 # ACP UI
 
-A modern, cross-platform desktop client for the [Agent Client Protocol (ACP)](https://agentclientprotocol.com/). Connect to AI coding agents like GitHub Copilot, Claude Code, Gemini CLI, and Qwen Code from a unified interface.
+A modern, cross-platform desktop client for the [Agent Client Protocol (ACP)](https://agentclientprotocol.com/). Connect to AI coding agents like GitHub Copilot, Claude Code, Gemini CLI, Qwen Code, Codex CLI, OpenCode, OpenClaw, and any ACP-compatible agent from a unified interface.
 
 ![ACP UI Screenshot](assets/screenshot.png)
 
@@ -41,6 +41,11 @@ ACP UI comes pre-configured with these agents:
 | [Claude Code](https://github.com/zed-industries/claude-code-acp) | `@zed-industries/claude-code-acp` |
 | [Gemini CLI](https://github.com/google-gemini/gemini-cli) | `@google/gemini-cli` |
 | [Qwen Code](https://github.com/QwenLM/qwen-code) | `@qwen-code/qwen-code` |
+| [Auggie CLI](https://github.com/AugmentCode/auggie) | `@augmentcode/auggie` |
+| [Qoder CLI](https://github.com/qoder-ai/qodercli) | `@qoder-ai/qodercli` |
+| [Codex CLI](https://github.com/zed-industries/codex-acp) | `@zed-industries/codex-acp` |
+| [OpenCode](https://github.com/opencode-ai/opencode) | `opencode-ai` |
+| [OpenClaw](https://github.com/nicobailon/openclaw) | `openclaw` |
 
 ## 🛠️ Configuration
 
@@ -77,6 +82,31 @@ Agent configurations are stored in:
     "Qwen Code": {
       "command": "npx",
       "args": ["@qwen-code/qwen-code@latest", "--acp", "--experimental-skills"],
+      "env": {}
+    },
+    "Auggie CLI": {
+      "command": "npx",
+      "args": ["@augmentcode/auggie@latest", "--acp"],
+      "env": {"AUGMENT_DISABLE_AUTO_UPDATE": "1"}
+    },
+    "Qoder CLI": {
+      "command": "npx",
+      "args": ["@qoder-ai/qodercli@latest", "--acp"],
+      "env": {}
+    },
+    "Codex CLI": {
+      "command": "npx",
+      "args": ["@zed-industries/codex-acp@latest"],
+      "env": {}
+    },
+    "OpenCode": {
+      "command": "npx",
+      "args": ["opencode-ai@latest", "acp"],
+      "env": {}
+    },
+    "OpenClaw": {
+      "command": "npx",
+      "args": ["openclaw", "acp"],
       "env": {}
     }
   }

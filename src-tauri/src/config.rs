@@ -67,6 +67,64 @@ impl Default for AgentsConfig {
                 env: std::collections::HashMap::new(),
             },
         );
+        agents.insert(
+            "Auggie CLI".to_string(),
+            AgentConfig {
+                command: "npx".to_string(),
+                args: vec![
+                    "@augmentcode/auggie@latest".to_string(),
+                    "--acp".to_string(),
+                ],
+                env: {
+                    let mut env = std::collections::HashMap::new();
+                    env.insert("AUGMENT_DISABLE_AUTO_UPDATE".to_string(), "1".to_string());
+                    env
+                },
+            },
+        );
+        agents.insert(
+            "Qoder CLI".to_string(),
+            AgentConfig {
+                command: "npx".to_string(),
+                args: vec![
+                    "@qoder-ai/qodercli@latest".to_string(),
+                    "--acp".to_string(),
+                ],
+                env: std::collections::HashMap::new(),
+            },
+        );
+        agents.insert(
+            "Codex CLI".to_string(),
+            AgentConfig {
+                command: "npx".to_string(),
+                args: vec![
+                    "@zed-industries/codex-acp@latest".to_string(),
+                ],
+                env: std::collections::HashMap::new(),
+            },
+        );
+        agents.insert(
+            "OpenCode".to_string(),
+            AgentConfig {
+                command: "npx".to_string(),
+                args: vec![
+                    "opencode-ai@latest".to_string(),
+                    "acp".to_string(),
+                ],
+                env: std::collections::HashMap::new(),
+            },
+        );
+        agents.insert(
+            "OpenClaw".to_string(),
+            AgentConfig {
+                command: "npx".to_string(),
+                args: vec![
+                    "openclaw".to_string(),
+                    "acp".to_string(),
+                ],
+                env: std::collections::HashMap::new(),
+            },
+        );
         AgentsConfig { agents }
     }
 }
