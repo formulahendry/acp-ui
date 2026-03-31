@@ -249,7 +249,7 @@ async function submitReport(): Promise<void> {
             type="button"
             @click="openReportModal(message)"
           >
-            Report AI Content
+            Report Inappropriate AI Content
           </button>
         </div>
         
