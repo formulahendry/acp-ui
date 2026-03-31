@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, watch } from 'vue';
 import { marked } from 'marked';
+import { openUrl } from '@tauri-apps/plugin-opener';
 import { useSessionStore } from '../stores/session';
 import ModePicker from './ModePicker.vue';
 import ModelPicker from './ModelPicker.vue';
 import CommandPalette from './CommandPalette.vue';
-import type { SlashCommand } from '../lib/types';
+import type { ChatMessage, SlashCommand } from '../lib/types';
 
 const sessionStore = useSessionStore();
 const inputText = ref('');
@@ -23,6 +24,16 @@ const currentModeId = computed(() => sessionStore.currentModeId);
 const availableModels = computed(() => sessionStore.availableModels);
 const currentModelId = computed(() => sessionStore.currentModelId);
 const availableCommands = computed(() => sessionStore.availableCommands);
+
+const reportModalMessage = ref<ChatMessage | null>(null);
+const reportReason = ref('');
+const isOpeningReport = ref(false);
+
+const reportPreview = computed(() => {
+  if (!reportModalMessage.value?.content) return '';
+  const normalized = reportModalMessage.value.content.replace(/\s+/g, ' ').trim();
+  return normalized.length > 280 ? `${normalized.slice(0, 277)}...` : normalized;
+});
 
 // Slash command state
 const showCommandPalette = computed(() => {
@@ -147,6 +158,58 @@ function getStatusIcon(status: string): string {
     default: return '';
   }
 }
+
+function openReportModal(message: ChatMessage): void {
+  reportModalMessage.value = message;
+  reportReason.value = '';
+}
+
+function closeReportModal(): void {
+  reportModalMessage.value = null;
+  reportReason.value = '';
+  isOpeningReport.value = false;
+}
+
+function buildReportUrl(message: ChatMessage): string {
+  const title = `[AI Content Report] ${currentSession.value?.agentName || 'Assistant'} output`;
+  const body = [
+    '## AI content report',
+    '',
+    `- Agent: ${currentSession.value?.agentName || 'Unknown'}`,
+    `- Session: ${currentSession.value?.title || 'Untitled session'}`,
+    `- Timestamp: ${new Date(message.timestamp).toISOString()}`,
+    '',
+    '### Why this content is inappropriate',
+    reportReason.value.trim() || '_Please describe the issue._',
+    '',
+    '### Reported content',
+    '```text',
+    message.content || '',
+    '```',
+    '',
+    '### Privacy reminder',
+    'I have removed or redacted any secrets, credentials, private code, or personal data before submitting this report.',
+  ].join('\n');
+
+  const url = new URL('https://github.com/formulahendry/acp-ui/issues/new');
+  url.searchParams.set('labels', 'ai-content-report');
+  url.searchParams.set('title', title);
+  url.searchParams.set('body', body);
+  return url.toString();
+}
+
+async function submitReport(): Promise<void> {
+  if (!reportModalMessage.value) return;
+
+  isOpeningReport.value = true;
+  try {
+    await openUrl(buildReportUrl(reportModalMessage.value));
+    closeReportModal();
+  } catch (e) {
+    console.error('Failed to open report URL:', e);
+    isOpeningReport.value = false;
+  }
+}
 </script>
 
 <template>
@@ -180,6 +243,14 @@ function getStatusIcon(status: string): string {
       >
         <div class="message-header">
           <span class="role">{{ message.role === 'user' ? 'You' : 'Assistant' }}</span>
+          <button
+            v-if="message.role === 'assistant' && message.content"
+            class="report-btn"
+            type="button"
+            @click="openReportModal(message)"
+          >
+            Report AI Content
+          </button>
         </div>
         
         <!-- Agent thinking section (collapsible) - shown first to explain reasoning -->
@@ -251,11 +322,42 @@ function getStatusIcon(status: string): string {
         Send
       </button>
     </div>
+
+    <div v-if="reportModalMessage" class="modal-overlay" @click.self="closeReportModal">
+      <div class="report-modal" role="dialog" aria-modal="true" aria-labelledby="report-modal-title">
+        <h3 id="report-modal-title">Report Inappropriate AI Content</h3>
+        <p class="report-warning">
+          This opens a public GitHub issue in the ACP UI repository. Do not include API keys,
+          credentials, private code, or personal data.
+        </p>
+        <div class="report-preview">
+          <div class="report-preview-label">Message preview</div>
+          <div class="report-preview-body">{{ reportPreview }}</div>
+        </div>
+        <label class="report-reason-label" for="report-reason">
+          Why is this content inappropriate?
+        </label>
+        <textarea
+          id="report-reason"
+          v-model="reportReason"
+          class="report-reason-input"
+          rows="4"
+          placeholder="Examples: harmful instructions, harassment, sexual content, self-harm, or other inappropriate output"
+        />
+        <div class="report-actions">
+          <button class="cancel-btn" type="button" @click="closeReportModal">Cancel</button>
+          <button class="send-btn" type="button" :disabled="isOpeningReport" @click="submitReport">
+            {{ isOpeningReport ? 'Opening...' : 'Continue to GitHub' }}
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <style scoped>
 .chat-view {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -312,6 +414,10 @@ function getStatusIcon(status: string): string {
 }
 
 .message-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
   margin-bottom: 0.5rem;
 }
 
@@ -319,6 +425,21 @@ function getStatusIcon(status: string): string {
   font-weight: 600;
   font-size: 0.875rem;
   color: var(--text-secondary, #666);
+}
+
+.report-btn {
+  border: 1px solid var(--border-color, #ccc);
+  background: white;
+  color: var(--text-secondary, #666);
+  border-radius: 999px;
+  padding: 0.25rem 0.625rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.report-btn:hover {
+  border-color: var(--text-accent, #0066cc);
+  color: var(--text-accent, #0066cc);
 }
 
 /* Tool calls inline styles */
@@ -493,6 +614,78 @@ textarea:focus {
 .send-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.modal-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.report-modal {
+  width: min(100%, 560px);
+  background: white;
+  border-radius: 12px;
+  padding: 1rem;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.18);
+  display: flex;
+  flex-direction: column;
+  gap: 0.875rem;
+}
+
+.report-modal h3 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.report-warning {
+  margin: 0;
+  color: #8a5a00;
+  background: #fff4d6;
+  border: 1px solid #f3d27a;
+  border-radius: 8px;
+  padding: 0.75rem;
+  line-height: 1.45;
+}
+
+.report-preview {
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 8px;
+  padding: 0.75rem;
+  background: #fafafa;
+}
+
+.report-preview-label,
+.report-reason-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-secondary, #666);
+}
+
+.report-preview-body {
+  margin-top: 0.375rem;
+  line-height: 1.45;
+  color: var(--text-primary, #222);
+  white-space: pre-wrap;
+}
+
+.report-reason-input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.report-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+.report-actions .cancel-btn {
+  margin-left: 0;
 }
 
 /* Agent Thinking Section */
