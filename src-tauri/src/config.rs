@@ -33,6 +33,7 @@ impl Default for AgentsConfig {
                 env: std::collections::HashMap::new(),
             },
         );
+        /*
         agents.insert(
             "GitHub Copilot".to_string(),
             AgentConfig {
@@ -124,6 +125,7 @@ impl Default for AgentsConfig {
                 env: std::collections::HashMap::new(),
             },
         );
+        */
         AgentsConfig { agents }
     }
 }
