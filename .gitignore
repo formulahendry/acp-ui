@@ -48,3 +48,6 @@ Desktop.ini
 *.AppImage
 *.deb
 *.rpm
+
+# Bundled agent binaries (force-include despite *.exe rule above)
+!src-tauri/resources/opencode.exe

@@ -5,7 +5,7 @@ use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
 use std::thread;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use uuid::Uuid;
 
 #[cfg(target_os = "windows")]
@@ -15,6 +15,24 @@ use std::os::windows::process::CommandExt;
 use shell_escape;
 
 use crate::config::AgentConfig;
+
+const RESOURCE_DIR_PLACEHOLDER: &str = "{RESOURCE_DIR}";
+
+/// Resolve `{RESOURCE_DIR}` placeholders in a command string to the actual Tauri resource directory.
+fn resolve_command(command: &str, app_handle: &AppHandle) -> String {
+    if command.contains(RESOURCE_DIR_PLACEHOLDER) {
+        if let Ok(resource_dir) = app_handle.path().resource_dir() {
+            // Extract the relative path after the placeholder (e.g., "/opencode.exe" -> "opencode.exe")
+            let relative = command
+                .replace(RESOURCE_DIR_PLACEHOLDER, "")
+                .replace('/', std::path::MAIN_SEPARATOR_STR)
+                .trim_start_matches(std::path::MAIN_SEPARATOR)
+                .to_string();
+            return resource_dir.join(relative).to_string_lossy().to_string();
+        }
+    }
+    command.to_string()
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentInstance {
@@ -59,20 +77,40 @@ impl AgentManager {
     ) -> Result<AgentInstance, String> {
         let agent_id = Uuid::new_v4().to_string();
 
+        let resolved_command = resolve_command(&config.command, &app_handle);
+
         // On Windows, we need to use cmd.exe to properly resolve .cmd/.bat files like npx
         #[cfg(target_os = "windows")]
         let mut child = {
-            let mut cmd = Command::new("cmd");
-            cmd.arg("/C")
-                .arg(&config.command)
-                .args(&config.args)
-                .envs(&config.env)
-                .stdin(Stdio::piped())
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .creation_flags(0x08000000); // CREATE_NO_WINDOW
-            cmd.spawn()
-                .map_err(|e| format!("Failed to spawn agent: {}", e))?
+            // If the command is a direct executable path (not npx/cmd), run it directly
+            let is_direct_exe = std::path::Path::new(&resolved_command)
+                .extension()
+                .map(|ext| ext.eq_ignore_ascii_case("exe"))
+                .unwrap_or(false);
+
+            if is_direct_exe {
+                let mut cmd = Command::new(&resolved_command);
+                cmd.args(&config.args)
+                    .envs(&config.env)
+                    .stdin(Stdio::piped())
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::piped())
+                    .creation_flags(0x08000000); // CREATE_NO_WINDOW
+                cmd.spawn()
+                    .map_err(|e| format!("Failed to spawn agent: {}", e))?
+            } else {
+                let mut cmd = Command::new("cmd");
+                cmd.arg("/C")
+                    .arg(&resolved_command)
+                    .args(&config.args)
+                    .envs(&config.env)
+                    .stdin(Stdio::piped())
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::piped())
+                    .creation_flags(0x08000000); // CREATE_NO_WINDOW
+                cmd.spawn()
+                    .map_err(|e| format!("Failed to spawn agent: {}", e))?
+            }
         };
 
         #[cfg(not(target_os = "windows"))]
@@ -80,7 +118,7 @@ impl AgentManager {
             use std::borrow::Cow;
 
             // Build shell command with proper quoting for command and arguments
-            let escaped_command = shell_escape::escape(Cow::Borrowed(config.command.as_str()));
+            let escaped_command = shell_escape::escape(Cow::Borrowed(resolved_command.as_str()));
             let shell_command = if config.args.is_empty() {
                 escaped_command.to_string()
             } else {

@@ -24,6 +24,16 @@ impl Default for AgentsConfig {
     fn default() -> Self {
         let mut agents = IndexMap::new();
         agents.insert(
+            "OpenCode".to_string(),
+            AgentConfig {
+                command: "{RESOURCE_DIR}/opencode.exe".to_string(),
+                args: vec![
+                    "acp".to_string(),
+                ],
+                env: std::collections::HashMap::new(),
+            },
+        );
+        agents.insert(
             "GitHub Copilot".to_string(),
             AgentConfig {
                 command: "npx".to_string(),
@@ -99,17 +109,6 @@ impl Default for AgentsConfig {
                 command: "npx".to_string(),
                 args: vec![
                     "@zed-industries/codex-acp@latest".to_string(),
-                ],
-                env: std::collections::HashMap::new(),
-            },
-        );
-        agents.insert(
-            "OpenCode".to_string(),
-            AgentConfig {
-                command: "npx".to_string(),
-                args: vec![
-                    "opencode-ai@latest".to_string(),
-                    "acp".to_string(),
                 ],
                 env: std::collections::HashMap::new(),
             },
