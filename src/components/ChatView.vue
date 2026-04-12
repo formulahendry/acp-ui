@@ -131,11 +131,7 @@ function handleKeyDown(event: KeyboardEvent) {
 
 function handleCommandSelect(command: SlashCommand) {
   // Replace current input with the command
-  if (command.hint) {
-    inputText.value = `/${command.name} `;
-  } else {
-    inputText.value = `/${command.name} `;
-  }
+  inputText.value = `/${command.name} `;
 }
 
 function handleCommandClose() {
