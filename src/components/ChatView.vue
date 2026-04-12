@@ -5,12 +5,27 @@ import { useSessionStore } from '../stores/session';
 import ModePicker from './ModePicker.vue';
 import ModelPicker from './ModelPicker.vue';
 import CommandPalette from './CommandPalette.vue';
-import type { SlashCommand } from '../lib/types';
+import type { SlashCommand, AttachmentRef } from '../lib/types';
+import { pickFiles } from '../lib/file-picker';
 
 const sessionStore = useSessionStore();
 const inputText = ref('');
 const messagesContainer = ref<HTMLElement | null>(null);
 const commandPaletteRef = ref<InstanceType<typeof CommandPalette> | null>(null);
+
+// Pending attachments state
+const pendingAttachments = ref<AttachmentRef[]>([]);
+
+async function handleAttach() {
+  const selected = await pickFiles();
+  if (selected.length > 0) {
+    pendingAttachments.value = [...pendingAttachments.value, ...selected];
+  }
+}
+
+function removeAttachment(id: string) {
+  pendingAttachments.value = pendingAttachments.value.filter(a => a.id !== id);
+}
 
 // Track expanded thought sections by message id
 const expandedThoughts = ref<Set<string>>(new Set());
@@ -52,11 +67,21 @@ async function handleSend() {
   const text = inputText.value.trim();
   if (!text || isLoading.value) return;
   
+  const attachments = pendingAttachments.value.length > 0 
+    ? [...pendingAttachments.value] 
+    : undefined;
+  
   inputText.value = '';
+  pendingAttachments.value = [];  // Clear pending BEFORE async send
+  
   try {
-    await sessionStore.sendPrompt(text);
+    await sessionStore.sendPrompt(text, attachments);
   } catch (e) {
     console.error('Failed to send prompt:', e);
+    // Restore attachments on failure
+    if (attachments) {
+      pendingAttachments.value = attachments;
+    }
   }
 }
 
@@ -236,20 +261,46 @@ function getStatusIcon(status: string): string {
         @select="handleCommandSelect"
         @close="handleCommandClose"
       />
-      <textarea
-        v-model="inputText"
-        :placeholder="availableCommands.length > 0 ? 'Type your message... (/ for commands)' : 'Type your message...'"
-        :disabled="isLoading"
-        @keydown="handleKeyDown"
-        rows="3"
-      />
-      <button 
-        class="send-btn"
-        :disabled="!inputText.trim() || isLoading"
-        @click="handleSend"
-      >
-        Send
-      </button>
+      
+      <div class="input-layout">
+        <!-- Pending attachments chips -->
+        <div v-if="pendingAttachments.length > 0" class="pending-attachments">
+          <div v-for="att in pendingAttachments" :key="att.id" class="attachment-chip">
+            <span class="attachment-chip-icon">📎</span>
+            <span class="attachment-chip-name">{{ att.name }}</span>
+            <button 
+              class="attachment-chip-remove" 
+              @click="removeAttachment(att.id)"
+              title="Remove attachment"
+            >×</button>
+          </div>
+        </div>
+
+        <div class="input-row">
+          <textarea
+            v-model="inputText"
+            :placeholder="availableCommands.length > 0 ? 'Type your message... (/ for commands)' : 'Type your message...'"
+            :disabled="isLoading"
+            @keydown="handleKeyDown"
+            rows="3"
+          />
+          <button
+            class="attach-btn"
+            :disabled="isLoading"
+            @click="handleAttach"
+            title="Attach files"
+          >
+            📎
+          </button>
+          <button 
+            class="send-btn"
+            :disabled="!inputText.trim() || isLoading"
+            @click="handleSend"
+          >
+            Send
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -453,10 +504,85 @@ function getStatusIcon(status: string): string {
 
 .input-container {
   position: relative;
-  display: flex;
-  gap: 0.5rem;
   padding: 1rem;
   border-top: 1px solid var(--border-color, #e0e0e0);
+}
+
+.input-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.input-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-end;
+}
+
+.pending-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  padding: 0.5rem 0.75rem 0;
+}
+
+.attachment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  background: var(--bg-chip, #e8f0fe);
+  border: 1px solid var(--border-chip, #c4d8f0);
+  border-radius: 1rem;
+  font-size: 0.8rem;
+  max-width: 200px;
+}
+
+.attachment-chip-icon {
+  flex-shrink: 0;
+}
+
+.attachment-chip-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachment-chip-remove {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0 0.125rem;
+  color: var(--text-secondary, #666);
+  flex-shrink: 0;
+}
+
+.attachment-chip-remove:hover {
+  color: var(--text-danger, #dc3545);
+}
+
+.attach-btn {
+  padding: 0.5rem;
+  font-size: 1.2rem;
+  background: none;
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.attach-btn:hover {
+  background: var(--bg-hover, #f0f0f0);
+}
+
+.attach-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 textarea {
