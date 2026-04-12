@@ -42,6 +42,7 @@ export interface ChatMessage {
   thought?: string;
   timestamp: number;
   toolCalls?: ToolCallInfo[];
+  attachments?: AttachmentRef[];
 }
 
 export interface ToolCallInfo {

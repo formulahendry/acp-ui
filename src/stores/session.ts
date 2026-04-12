@@ -4,10 +4,11 @@ import { ref, computed, watch } from 'vue';
 import { load, Store } from '@tauri-apps/plugin-store';
 import { getVersion } from '@tauri-apps/api/app';
 import { trackEvent, trackError } from '../lib/telemetry';
-import type { SavedSession, ChatMessage, ToolCallInfo, PermissionRequest, SessionMode, SlashCommand, ModelInfo } from '../lib/types';
+import type { SavedSession, ChatMessage, ToolCallInfo, PermissionRequest, SessionMode, SlashCommand, ModelInfo, AttachmentRef } from '../lib/types';
 import { AcpClientBridge, createAcpClient } from '../lib/acp-bridge';
 import { spawnAgent, killAgent, onAgentStderr } from '../lib/tauri';
-import type { SessionNotification, AuthMethod } from '@agentclientprotocol/sdk';
+import { serializeAttachmentsToContentBlocks } from '../lib/attachments';
+import type { SessionNotification, AuthMethod, ContentBlock } from '@agentclientprotocol/sdk';
 
 const STORE_PATH = 'sessions.json';
 const PROTOCOL_VERSION = 1;
@@ -577,7 +578,7 @@ export const useSessionStore = defineStore('session', () => {
   }
 
   // Send prompt
-  async function sendPrompt(text: string): Promise<void> {
+  async function sendPrompt(text: string, attachments?: AttachmentRef[]): Promise<void> {
     if (!acpClient || !currentSession.value) {
       throw new Error('No active session');
     }
@@ -588,18 +589,25 @@ export const useSessionStore = defineStore('session', () => {
       role: 'user',
       content: text,
       timestamp: Date.now(),
+      attachments: attachments?.length ? attachments : undefined,
     });
 
     isLoading.value = true;
     try {
+      const prompt: ContentBlock[] = [
+        {
+          type: 'text',
+          text,
+        },
+      ];
+
+      if (attachments?.length) {
+        prompt.push(...serializeAttachmentsToContentBlocks(attachments));
+      }
+
       const response = await acpClient.prompt({
         sessionId: currentSession.value.sessionId,
-        prompt: [
-          {
-            type: 'text',
-            text,
-          },
-        ],
+        prompt,
       });
 
       console.log('Prompt completed:', response.stopReason);
