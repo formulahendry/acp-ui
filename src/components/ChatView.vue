@@ -87,6 +87,11 @@ watch(messages, async () => {
   }
 }, { deep: true });
 
+watch(() => sessionStore.currentSession, () => {
+  pendingAttachments.value = [];
+  rejectionMessages.value = [];
+});
+
 async function handleSend() {
   const text = inputText.value.trim();
   if (!text || isLoading.value) return;
@@ -196,6 +201,14 @@ function getStatusIcon(status: string): string {
     default: return '';
   }
 }
+
+function formatSize(bytes: number): string {
+  if (bytes === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
 </script>
 
 <template>
@@ -266,6 +279,19 @@ function getStatusIcon(status: string): string {
           class="message-content"
           v-html="renderMarkdown(message.content)"
         />
+        
+        <!-- History attachments (read-only) -->
+        <div v-if="message.role === 'user' && message.attachments?.length" class="history-attachments">
+          <div 
+            v-for="att in message.attachments" 
+            :key="att.id"
+            class="history-chip"
+          >
+            <span class="history-chip-icon">📄</span>
+            <span class="history-chip-name" :title="att.name">{{ att.name }}</span>
+            <span class="history-chip-meta">{{ formatSize(att.size) }}</span>
+          </div>
+        </div>
       </div>
       
       <!-- Loading indicator -->
@@ -500,6 +526,45 @@ function getStatusIcon(status: string): string {
 .message-content :deep(code) {
   font-family: 'Consolas', 'Monaco', monospace;
   font-size: 0.9rem;
+}
+
+.history-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  margin-top: 0.5rem;
+}
+
+.history-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  background: rgba(0, 0, 0, 0.04);
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 4px;
+  font-size: 0.8rem;
+  max-width: 250px;
+}
+
+.history-chip-icon {
+  flex-shrink: 0;
+  color: var(--text-secondary, #666);
+}
+
+.history-chip-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.history-chip-meta {
+  color: var(--text-muted, #999);
+  font-size: 0.7rem;
+  flex-shrink: 0;
+  margin-left: 0.25rem;
 }
 
 .loading-indicator {
