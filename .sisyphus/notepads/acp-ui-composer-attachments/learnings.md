@@ -28,3 +28,6 @@
 - ACP PromptRequest content blocks accept resource_link with nested resource { uri, name, mimeType }, so session prompt payloads can carry attachment metadata without file content.
 - Windows drive-letter paths are safely serialized with encodeURIComponent on path segments, yielding file:///C%3A/... URIs.
 
+- ACP esource_link content blocks use flat top-level fields (uri, name, mimeType); nesting under esource breaks vue-tsc/build even if tests pass.
+- The serializer should mirror the SDK's ContentBlock union exactly to keep type-checking aligned with runtime payloads.
+

@@ -109,10 +109,8 @@ export function toFileUri(filePath: string): string {
 export function serializeAttachmentsToContentBlocks(attachments: AttachmentRef[]): ContentBlock[] {
   return attachments.map((att) => ({
     type: 'resource_link' as const,
-    resource: {
-      uri: toFileUri(att.path),
-      name: att.name,
-      mimeType: att.mimeType,
-    },
+    uri: toFileUri(att.path),
+    name: att.name,
+    mimeType: att.mimeType,
   }));
 }

@@ -25,19 +25,15 @@ describe('attachment serialization', () => {
     expect(blocks).toEqual([
       {
         type: 'resource_link',
-        resource: {
-          uri: 'file:///files/notes.md',
-          name: 'notes.md',
-          mimeType: 'text/markdown',
-        },
+        uri: 'file:///files/notes.md',
+        name: 'notes.md',
+        mimeType: 'text/markdown',
       },
       {
         type: 'resource_link',
-        resource: {
-          uri: 'file:///files/data.json',
-          name: 'data.json',
-          mimeType: 'application/json',
-        },
+        uri: 'file:///files/data.json',
+        name: 'data.json',
+        mimeType: 'application/json',
       },
     ]);
   });
@@ -70,11 +66,9 @@ describe('attachment serialization', () => {
 
     expect(blocks[0]).toEqual({
       type: 'resource_link',
-      resource: {
-        uri: 'file:///C%3A/Users/me/%E7%9F%A5%E8%AF%86%E5%BA%93%20%E6%96%87%E6%A1%A3.pdf',
-        name: '知识库 文档.pdf',
-        mimeType: 'application/pdf',
-      },
+      uri: 'file:///C%3A/Users/me/%E7%9F%A5%E8%AF%86%E5%BA%93%20%E6%96%87%E6%A1%A3.pdf',
+      name: '知识库 文档.pdf',
+      mimeType: 'application/pdf',
     });
   });
 });
