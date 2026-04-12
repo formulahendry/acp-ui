@@ -89,3 +89,12 @@ export interface ModelInfo {
   name: string;
   description?: string;
 }
+
+export interface AttachmentRef {
+  id: string;
+  name: string;
+  path: string;
+  mimeType: string;
+  size: number;
+  source: 'local' | 'web';
+}

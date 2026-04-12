@@ -20,3 +20,7 @@
 - Validation uses case-insensitive path normalization for v1, matching the planned shared contract.
 - Vitest coverage includes valid sets, disallowed extensions, oversized files, duplicate paths, over-count, mixed results, and MIME mapping.
 - Test setup already exists, so the new test file runs without extra config.
+- Centralized AttachmentRef -> ACP resource_link serialization in src/lib/attachments.ts to keep file URI encoding consistent across callers.
+- ACP PromptRequest content blocks accept resource_link with nested resource { uri, name, mimeType }, so session prompt payloads can carry attachment metadata without file content.
+- Windows drive-letter paths are safely serialized with encodeURIComponent on path segments, yielding file:///C%3A/... URIs.
+
