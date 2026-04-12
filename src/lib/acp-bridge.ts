@@ -130,6 +130,17 @@ export class AcpClientBridge implements Client {
         this.handleNotification(parsed.method, parsed.params);
       }
     } catch (e) {
+      const store = getTrafficStore();
+      store.addEntry({
+        direction: 'in',
+        type: 'notification',
+        method: 'bridge/parse_error',
+        payload: {
+          message,
+          error: e instanceof Error ? e.message : String(e),
+        },
+        error: true,
+      });
       console.error('Failed to parse message:', message, e);
     }
   }
@@ -178,7 +189,22 @@ export class AcpClientBridge implements Client {
   private handleNotification(method: string, params: unknown): void {
     if (method === 'session/update') {
       if (this.onSessionUpdate) {
-        this.onSessionUpdate(params as SessionNotification);
+        try {
+          this.onSessionUpdate(params as SessionNotification);
+        } catch (e) {
+          const store = getTrafficStore();
+          store.addEntry({
+            direction: 'in',
+            type: 'notification',
+            method: 'session/update/error',
+            payload: {
+              params,
+              error: e instanceof Error ? e.message : String(e),
+            },
+            error: true,
+          });
+          console.error('Failed to apply session/update notification:', params, e);
+        }
       }
     }
   }

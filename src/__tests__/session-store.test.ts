@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 import type { AttachmentRef } from '../lib/types';
+import type { SessionNotification } from '@agentclientprotocol/sdk';
 
 const mockPrompt = vi.fn();
 const mockInitialize = vi.fn();
@@ -12,6 +13,14 @@ const mockSpawnAgent = vi.fn();
 const mockOnAgentStderr = vi.fn();
 const mockTrackEvent = vi.fn();
 const mockTrackError = vi.fn();
+let lastClient: {
+  pendingPermissionRequest: { value: null };
+  onSessionUpdate: ((notification: SessionNotification) => void) | null;
+  initialize: typeof mockInitialize;
+  newSession: typeof mockNewSession;
+  prompt: typeof mockPrompt;
+  disconnect: typeof mockDisconnect;
+} | null = null;
 
 vi.mock('@tauri-apps/plugin-store', () => ({
   Store: vi.fn(),
@@ -35,14 +44,18 @@ vi.mock('../lib/tauri', () => ({
 
 vi.mock('../lib/acp-bridge', () => ({
   AcpClientBridge: class {},
-  createAcpClient: vi.fn(async () => ({
-    pendingPermissionRequest: { value: null },
-    onSessionUpdate: null,
-    initialize: mockInitialize,
-    newSession: mockNewSession,
-    prompt: mockPrompt,
-    disconnect: mockDisconnect,
-  })),
+  createAcpClient: vi.fn(async () => {
+    lastClient = {
+      pendingPermissionRequest: { value: null },
+      onSessionUpdate: null,
+      initialize: mockInitialize,
+      newSession: mockNewSession,
+      prompt: mockPrompt,
+      disconnect: mockDisconnect,
+    };
+
+    return lastClient;
+  }),
 }));
 
 function makeAttachment(overrides: Partial<AttachmentRef> & Pick<AttachmentRef, 'id' | 'name' | 'path'>): AttachmentRef {
@@ -79,6 +92,7 @@ describe('session store sendPrompt', () => {
     mockOnAgentStderr.mockReset();
     mockTrackEvent.mockReset();
     mockTrackError.mockReset();
+    lastClient = null;
 
     mockLoad.mockResolvedValue({
       get: vi.fn().mockResolvedValue(undefined),
@@ -142,5 +156,39 @@ describe('session store sendPrompt', () => {
     });
     expect(store.messages).toHaveLength(1);
     expect(store.messages[0].attachments).toBeUndefined();
+  });
+
+  it('stores a visible error when the prompt request fails', async () => {
+    const store = await createReadyStore();
+    mockPrompt.mockRejectedValueOnce(new Error('agent unreachable'));
+
+    await expect(store.sendPrompt('hello')).rejects.toThrow('agent unreachable');
+    expect(store.error).toBe('Prompt failed: agent unreachable');
+  });
+
+  it('ignores session/prompt timeout when agent activity already streamed', async () => {
+    const store = await createReadyStore();
+
+    mockPrompt.mockImplementationOnce(async () => {
+      lastClient?.onSessionUpdate?.({
+        sessionId: 'session-1',
+        update: {
+          sessionUpdate: 'agent_message_chunk',
+          content: {
+            type: 'text',
+            text: 'streamed reply',
+          },
+        },
+      } as SessionNotification);
+
+      throw new Error('Request timeout: session/prompt');
+    });
+
+    await expect(store.sendPrompt('hello')).resolves.toBeUndefined();
+    expect(store.error).toBeNull();
+    expect(store.messages[store.messages.length - 1]).toMatchObject({
+      role: 'assistant',
+      content: 'streamed reply',
+    });
   });
 });
