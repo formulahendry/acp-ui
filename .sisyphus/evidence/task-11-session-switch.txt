@@ -1,0 +1,5 @@
+Task 11 regression evidence
+
+- Added composer reset regression tests for send, session switch, and picker cancel behavior.
+- Added minimal ChatView session-change watcher to clear pending composer state only.
+- Verification: `npx vitest run` passed (45 tests).

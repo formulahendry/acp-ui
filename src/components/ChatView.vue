@@ -204,11 +204,12 @@ function getStatusIcon(status: string): string {
 
 function formatSize(bytes: number): string {
   if (bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+  const units = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  const value = bytes / Math.pow(1024, i);
+  return `${Number.isInteger(value) ? value : value.toFixed(1)} ${units[i]}`;
 }
+
 </script>
 
 <template>
@@ -280,18 +281,15 @@ function formatSize(bytes: number): string {
           v-html="renderMarkdown(message.content)"
         />
         
-        <!-- History attachments (read-only) -->
+        <!-- Attachment metadata in history (read-only chips) -->
         <div v-if="message.role === 'user' && message.attachments?.length" class="history-attachments">
-          <div 
-            v-for="att in message.attachments" 
-            :key="att.id"
-            class="history-chip"
-          >
+          <div v-for="att in message.attachments" :key="att.id" class="history-chip">
             <span class="history-chip-icon">📄</span>
-            <span class="history-chip-name" :title="att.name">{{ att.name }}</span>
+            <span class="history-chip-name">{{ att.name }}</span>
             <span class="history-chip-meta">{{ formatSize(att.size) }}</span>
           </div>
         </div>
+        
       </div>
       
       <!-- Loading indicator -->
