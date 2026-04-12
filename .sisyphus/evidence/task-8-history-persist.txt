@@ -1,0 +1,13 @@
+Verified with tests that sent user messages retain attachment metadata in store state after composer reset.
+
+Coverage:
+- user messages keep attachments metadata after sendPrompt
+- composer pending attachments are cleared before async send
+- message history remains metadata-only
+
+Commands:
+- npm test
+- npm run build
+
+Result:
+- PASS
