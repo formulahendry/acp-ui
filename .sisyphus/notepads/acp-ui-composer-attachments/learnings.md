@@ -20,6 +20,10 @@
 - Validation uses case-insensitive path normalization for v1, matching the planned shared contract.
 - Vitest coverage includes valid sets, disallowed extensions, oversized files, duplicate paths, over-count, mixed results, and MIME mapping.
 - Test setup already exists, so the new test file runs without extra config.
+\n+[2026-04-12] File picker adapter
+- Added a mockable `_rawPicker` seam plus `_setRawPicker`/`_resetRawPicker` helpers so tests can bypass native dialogs.
+- `pickFiles()` normalizes `open({ multiple: true })` results into `AttachmentRef[]`, derives names from path separators, and safely falls back to `size = 0` when `stat()` fails.
+- Test coverage verifies multi-file, single-file, cancel/null, empty selection, and stat failure behavior.
 - Centralized AttachmentRef -> ACP resource_link serialization in src/lib/attachments.ts to keep file URI encoding consistent across callers.
 - ACP PromptRequest content blocks accept resource_link with nested resource { uri, name, mimeType }, so session prompt payloads can carry attachment metadata without file content.
 - Windows drive-letter paths are safely serialized with encodeURIComponent on path segments, yielding file:///C%3A/... URIs.
