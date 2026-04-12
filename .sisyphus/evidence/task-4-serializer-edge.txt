@@ -1,0 +1,2 @@
+Windows path encoding: file:///C%3A/Users/docs/file.md
+Unicode/space encoding: file:///home/user/%E7%9F%A5%E8%AF%86%E5%BA%93%20%E6%96%87%E6%A1%A3.pdf

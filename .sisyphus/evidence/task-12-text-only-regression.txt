@@ -1,0 +1,76 @@
+﻿
+[1m[46m RUN [49m[22m [36mv3.2.4 [39m[90mD:/agi-project/acp-ui[39m
+
+[90mstdout[2m | src/__tests__/integration-command-agnostic.test.ts[2m > [22m[2mattachment flow stays command agnostic[2m > [22m[2muses the same attachment prompt structure for slash commands and plain text
+[22m[39mAgent initialized: { agentCapabilities: {}, authMethods: [] }
+
+[90mstdout[2m | src/__tests__/integration-command-agnostic.test.ts[2m > [22m[2mattachment flow stays command agnostic[2m > [22m[2muses the same attachment prompt structure for slash commands and plain text
+[22m[39mPrompt completed: end_turn
+
+[90mstdout[2m | src/__tests__/integration-command-agnostic.test.ts[2m > [22m[2mattachment flow stays command agnostic[2m > [22m[2muses the same attachment prompt structure for slash commands and plain text
+[22m[39mAgent initialized: { agentCapabilities: {}, authMethods: [] }
+
+[90mstdout[2m | src/__tests__/integration-command-agnostic.test.ts[2m > [22m[2mattachment flow stays command agnostic[2m > [22m[2muses the same attachment prompt structure for slash commands and plain text
+[22m[39mPrompt completed: end_turn
+
+[90mstdout[2m | src/__tests__/integration-command-agnostic.test.ts[2m > [22m[2mattachment flow stays command agnostic[2m > [22m[2muses the same attachment prompt structure for slash commands and plain text
+[22m[39mAgent initialized: { agentCapabilities: {}, authMethods: [] }
+
+[90mstdout[2m | src/__tests__/integration-command-agnostic.test.ts[2m > [22m[2mattachment flow stays command agnostic[2m > [22m[2muses the same attachment prompt structure for slash commands and plain text
+[22m[39mPrompt completed: end_turn
+
+ [31m鉂?[39m src/__tests__/integration-command-agnostic.test.ts [2m([22m[2m1 test[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 106[2mms[22m[39m
+[31m   [31m脳[31m attachment flow stays command agnostic[2m > [22muses the same attachment prompt structure for slash commands and plain text[39m[32m 104[2mms[22m[39m
+[31m     鈫?expected [ { type: 'text', 鈥?1) }, 鈥?2) ] to deeply equal [ { type: 'text', 鈥?1) }, 鈥?2) ][39m
+node.exe : 
+所在位置 行:1 字符: 1
++ & "C:\Program Files\nodejs/node.exe" "C:\Users\haxu\AppData\Roaming\n ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+[31m鈳幆鈳幆鈳幆鈳?[39m[1m[41m Failed Tests 1 [49m[22m[31m鈳幆鈳幆鈳幆鈳?[39m
+
+[41m[1m FAIL [22m[49m src/__tests__/integration-command-agnostic.test.ts[2m > [22mattachment flow stays command a
+gnostic[2m > [22muses the same attachment prompt structure for slash commands and plain text
+[31m[1mAssertionError[22m: expected [ { type: 'text', 鈥?1) }, 鈥?2) ] to deeply equal [ { type: 'text', 鈥?1) }, 鈥?2) 
+][39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[33m@@ -4,15 +4,17 @@[39m
+[2m      "type": "text",[22m
+[2m    },[22m
+[2m    {[22m
+[2m      "mimeType": "text/markdown",[22m
+[2m      "name": "notes.md",[22m
+[31m+     "size": 12n,[39m
+[2m      "type": "resource_link",[22m
+[2m      "uri": "file:///C%3A/docs/notes.md",[22m
+[2m    },[22m
+[2m    {[22m
+[2m      "mimeType": "text/csv",[22m
+[2m      "name": "table.csv",[22m
+[31m+     "size": 34n,[39m
+[2m      "type": "resource_link",[22m
+[2m      "uri": "file:///C%3A/docs/table.csv",[22m
+[2m    },[22m
+[2m  ][22m
+
+[36m [2m鉂?[22m src/__tests__/integration-command-agnostic.test.ts:[2m116:32[22m[39m
+    [90m114| [39m
+    [90m115| [39m    [34mexpect[39m(recordedPrompts)[33m.[39m[34mtoHaveLength[39m([34m3[39m)[33m;[39m
+    [90m116| [39m    [34mexpect[39m(recordedPrompts[[34m0[39m])[33m.[39m[34mtoEqual[39m([
+    [90m   | [39m                               [31m^[39m
+    [90m117| [39m      { type[33m:[39m [32m'text'[39m[33m,[39m text[33m:[39m [32m'/ingest some-text'[39m }
+[33m,[39m
+    [90m118| [39m      { type: 'resource_link', uri: 'file:///C%3A/docs/notes.md', name鈥?
+[31m[2m鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆鈳幆[1/1]鈳?[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m   Start at [22m 18:03:59
+[2m   Duration [22m 2.05s[2m (transform 134ms, setup 46ms, collect 165ms, tests 106ms, environment 513ms, prepare 233ms)[22m
+

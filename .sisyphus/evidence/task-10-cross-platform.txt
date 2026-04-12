@@ -1,0 +1,13 @@
+Task 10 cross-platform attachment contract coverage
+
+Verification:
+- Added src/__tests__/cross-platform-contract.test.ts
+- Covered desktop/web normalization into shared AttachmentRef shape
+- Covered ACP resource_link serialization for multiple attachments
+- Covered allowed and disallowed file extensions
+- Mocked @tauri-apps/plugin-fs stat to return size 2048
+- Ran npx vitest run: PASS
+
+Result:
+- 9 test files passed
+- 39 tests passed

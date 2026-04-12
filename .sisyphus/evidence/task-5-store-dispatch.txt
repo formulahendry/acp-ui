@@ -1,0 +1,30 @@
+Task 5 evidence: attachment-aware session dispatch
+
+Changed files:
+- src/stores/session.ts
+- src/lib/types.ts
+- src/__tests__/session-store.test.ts
+
+Relevant behavior:
+- sendPrompt(text, attachments?) now builds a ContentBlock[] prompt with:
+  1. { type: 'text', text }
+  2. zero-to-many serialized resource_link blocks from serializeAttachmentsToContentBlocks(attachments)
+- user messages persist attachments only when attachments.length > 0
+
+Automated proof:
+- src/__tests__/session-store.test.ts :: sends text plus attachment resource links and stores attachments metadata
+- Assertion verifies prompt payload equals:
+  [
+    { type: 'text', text: 'hello' },
+    { type: 'resource_link', uri: 'file:///path1', name: 'file1.md', mimeType: 'text/markdown' },
+    { type: 'resource_link', uri: 'file:///path2', name: 'file2.json', mimeType: 'application/json' }
+  ]
+- Assertion verifies store.messages[0].attachments equals the original attachment array
+
+Command result:
+- npm test PASS
+- Included: src/__tests__/session-store.test.ts (3 tests)
+
+Excerpt:
+- "✓ src/__tests__/session-store.test.ts (3 tests)"
+- "Tests 28 passed (28)"

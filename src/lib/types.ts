@@ -42,6 +42,7 @@ export interface ChatMessage {
   thought?: string;
   timestamp: number;
   toolCalls?: ToolCallInfo[];
+  attachments?: AttachmentRef[];
 }
 
 export interface ToolCallInfo {
@@ -88,4 +89,13 @@ export interface ModelInfo {
   modelId: string;
   name: string;
   description?: string;
+}
+
+export interface AttachmentRef {
+  id: string;
+  name: string;
+  path: string;
+  mimeType: string;
+  size: number;
+  source: 'local' | 'web';
 }

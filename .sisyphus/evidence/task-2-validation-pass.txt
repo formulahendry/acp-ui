@@ -1,0 +1,3 @@
+PASS: npm test
+Result: 2 test files passed, 10 tests passed
+Attachment validation tests: passed

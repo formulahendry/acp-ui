@@ -1,0 +1,2 @@
+CI workflow includes a `Run tests` step before `Type check` in `.github/workflows/ci.yml`.
+Step order: Checkout -> Setup Node.js -> Install Rust stable -> Rust cache -> Install frontend dependencies -> Run tests -> Type check -> Build Tauri app.

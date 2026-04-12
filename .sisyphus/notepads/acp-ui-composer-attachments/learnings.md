@@ -1,0 +1,4 @@
+## 2026-04-12
+- ChatView needs a minimal watcher on `sessionStore.currentSession` to clear only composer-local pending state.
+- Pending composer attachments should reset on send and on session transitions, but sent message attachment metadata must remain in the store.
+- Canceling the file picker returns an empty selection path and should leave composer state untouched.

@@ -1,0 +1,25 @@
+Task 5 evidence: text-only regression coverage
+
+Regression target:
+- sendPrompt('hello') without attachments must keep prior text-only ACP prompt behavior
+- sendPrompt('hello', []) must behave the same as text-only
+
+Automated proof:
+- src/__tests__/session-store.test.ts :: sends a text-only prompt and stores no attachments metadata
+  Expected prompt:
+  [{ type: 'text', text: 'hello' }]
+  Expected user message attachments: undefined
+
+- src/__tests__/session-store.test.ts :: treats an empty attachments array like a text-only prompt
+  Expected prompt:
+  [{ type: 'text', text: 'hello' }]
+  Expected user message attachments: undefined
+
+Command result:
+- npm test PASS
+- npm run build PASS
+
+Excerpts:
+- "✓ src/__tests__/session-store.test.ts (3 tests)"
+- "Test Files 6 passed (6)"
+- "✓ built in 2.09s"

@@ -5,12 +5,51 @@ import { useSessionStore } from '../stores/session';
 import ModePicker from './ModePicker.vue';
 import ModelPicker from './ModelPicker.vue';
 import CommandPalette from './CommandPalette.vue';
-import type { SlashCommand } from '../lib/types';
+import type { SlashCommand, AttachmentRef } from '../lib/types';
+import { validateAttachments } from '../lib/attachments';
+import { pickFiles } from '../lib/file-picker';
 
 const sessionStore = useSessionStore();
 const inputText = ref('');
 const messagesContainer = ref<HTMLElement | null>(null);
 const commandPaletteRef = ref<InstanceType<typeof CommandPalette> | null>(null);
+
+// Pending attachments state
+const pendingAttachments = ref<AttachmentRef[]>([]);
+const rejectionMessages = ref<string[]>([]);
+let rejectionTimer: ReturnType<typeof setTimeout> | null = null;
+
+function setRejectionMessages(messages: string[]): void {
+  rejectionMessages.value = messages;
+
+  if (rejectionTimer) {
+    clearTimeout(rejectionTimer);
+  }
+
+  rejectionTimer = setTimeout(() => {
+    rejectionMessages.value = [];
+    rejectionTimer = null;
+  }, 5000);
+}
+
+async function handleAttach() {
+  const selected = await pickFiles();
+  if (selected.length === 0) return;
+
+  const result = validateAttachments(selected, pendingAttachments.value);
+
+  if (result.valid.length > 0) {
+    pendingAttachments.value = [...pendingAttachments.value, ...result.valid];
+  }
+
+  if (result.rejected.length > 0) {
+    setRejectionMessages(result.rejected.map((r) => `${r.name}: ${r.reason}`));
+  }
+}
+
+function removeAttachment(id: string) {
+  pendingAttachments.value = pendingAttachments.value.filter(a => a.id !== id);
+}
 
 // Track expanded thought sections by message id
 const expandedThoughts = ref<Set<string>>(new Set());
@@ -48,15 +87,30 @@ watch(messages, async () => {
   }
 }, { deep: true });
 
+watch(() => sessionStore.currentSession, () => {
+  pendingAttachments.value = [];
+  rejectionMessages.value = [];
+});
+
 async function handleSend() {
   const text = inputText.value.trim();
   if (!text || isLoading.value) return;
   
+  const attachments = pendingAttachments.value.length > 0 
+    ? [...pendingAttachments.value] 
+    : undefined;
+  
   inputText.value = '';
+  pendingAttachments.value = [];  // Clear pending BEFORE async send
+  
   try {
-    await sessionStore.sendPrompt(text);
+    await sessionStore.sendPrompt(text, attachments);
   } catch (e) {
     console.error('Failed to send prompt:', e);
+    // Restore attachments on failure
+    if (attachments) {
+      pendingAttachments.value = attachments;
+    }
   }
 }
 
@@ -77,11 +131,7 @@ function handleKeyDown(event: KeyboardEvent) {
 
 function handleCommandSelect(command: SlashCommand) {
   // Replace current input with the command
-  if (command.hint) {
-    inputText.value = `/${command.name} `;
-  } else {
-    inputText.value = `/${command.name} `;
-  }
+  inputText.value = `/${command.name} `;
 }
 
 function handleCommandClose() {
@@ -147,6 +197,15 @@ function getStatusIcon(status: string): string {
     default: return '';
   }
 }
+
+function formatSize(bytes: number): string {
+  if (bytes === 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  const value = bytes / Math.pow(1024, i);
+  return `${Number.isInteger(value) ? value : value.toFixed(1)} ${units[i]}`;
+}
+
 </script>
 
 <template>
@@ -217,6 +276,16 @@ function getStatusIcon(status: string): string {
           class="message-content"
           v-html="renderMarkdown(message.content)"
         />
+        
+        <!-- Attachment metadata in history (read-only chips) -->
+        <div v-if="message.role === 'user' && message.attachments?.length" class="history-attachments">
+          <div v-for="att in message.attachments" :key="att.id" class="history-chip">
+            <span class="history-chip-icon">📄</span>
+            <span class="history-chip-name">{{ att.name }}</span>
+            <span class="history-chip-meta">{{ formatSize(att.size) }}</span>
+          </div>
+        </div>
+        
       </div>
       
       <!-- Loading indicator -->
@@ -236,20 +305,53 @@ function getStatusIcon(status: string): string {
         @select="handleCommandSelect"
         @close="handleCommandClose"
       />
-      <textarea
-        v-model="inputText"
-        :placeholder="availableCommands.length > 0 ? 'Type your message... (/ for commands)' : 'Type your message...'"
-        :disabled="isLoading"
-        @keydown="handleKeyDown"
-        rows="3"
-      />
-      <button 
-        class="send-btn"
-        :disabled="!inputText.trim() || isLoading"
-        @click="handleSend"
-      >
-        Send
-      </button>
+
+      <!-- Attachment validation messages -->
+      <div v-if="rejectionMessages.length > 0" class="attachment-rejections">
+        <div v-for="(msg, index) in rejectionMessages" :key="index" class="rejection-message">
+          ⚠️ {{ msg }}
+        </div>
+      </div>
+      
+      <div class="input-layout">
+        <!-- Pending attachments chips -->
+        <div v-if="pendingAttachments.length > 0" class="pending-attachments">
+          <div v-for="att in pendingAttachments" :key="att.id" class="attachment-chip">
+            <span class="attachment-chip-icon">📎</span>
+            <span class="attachment-chip-name">{{ att.name }}</span>
+            <button 
+              class="attachment-chip-remove" 
+              @click="removeAttachment(att.id)"
+              title="Remove attachment"
+            >×</button>
+          </div>
+        </div>
+
+        <div class="input-row">
+          <textarea
+            v-model="inputText"
+            :placeholder="availableCommands.length > 0 ? 'Type your message... (/ for commands)' : 'Type your message...'"
+            :disabled="isLoading"
+            @keydown="handleKeyDown"
+            rows="3"
+          />
+          <button
+            class="attach-btn"
+            :disabled="isLoading"
+            @click="handleAttach"
+            title="Attach files"
+          >
+            📎
+          </button>
+          <button 
+            class="send-btn"
+            :disabled="!inputText.trim() || isLoading"
+            @click="handleSend"
+          >
+            Send
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -420,6 +522,45 @@ function getStatusIcon(status: string): string {
   font-size: 0.9rem;
 }
 
+.history-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  margin-top: 0.5rem;
+}
+
+.history-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  background: rgba(0, 0, 0, 0.04);
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 4px;
+  font-size: 0.8rem;
+  max-width: 250px;
+}
+
+.history-chip-icon {
+  flex-shrink: 0;
+  color: var(--text-secondary, #666);
+}
+
+.history-chip-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.history-chip-meta {
+  color: var(--text-muted, #999);
+  font-size: 0.7rem;
+  flex-shrink: 0;
+  margin-left: 0.25rem;
+}
+
 .loading-indicator {
   display: flex;
   align-items: center;
@@ -453,10 +594,95 @@ function getStatusIcon(status: string): string {
 
 .input-container {
   position: relative;
-  display: flex;
-  gap: 0.5rem;
   padding: 1rem;
   border-top: 1px solid var(--border-color, #e0e0e0);
+}
+
+.input-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.attachment-rejections {
+  padding: 0.5rem 0.75rem;
+}
+
+.rejection-message {
+  font-size: 0.8rem;
+  color: var(--text-warning, #b45309);
+  padding: 0.125rem 0;
+}
+
+.input-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-end;
+}
+
+.pending-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  padding: 0.5rem 0.75rem 0;
+}
+
+.attachment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  background: var(--bg-chip, #e8f0fe);
+  border: 1px solid var(--border-chip, #c4d8f0);
+  border-radius: 1rem;
+  font-size: 0.8rem;
+  max-width: 200px;
+}
+
+.attachment-chip-icon {
+  flex-shrink: 0;
+}
+
+.attachment-chip-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachment-chip-remove {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  padding: 0 0.125rem;
+  color: var(--text-secondary, #666);
+  flex-shrink: 0;
+}
+
+.attachment-chip-remove:hover {
+  color: var(--text-danger, #dc3545);
+}
+
+.attach-btn {
+  padding: 0.5rem;
+  font-size: 1.2rem;
+  background: none;
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.attach-btn:hover {
+  background: var(--bg-hover, #f0f0f0);
+}
+
+.attach-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 textarea {

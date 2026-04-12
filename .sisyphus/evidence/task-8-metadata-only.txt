@@ -1,0 +1,12 @@
+Verified message history stores attachment metadata only.
+
+Checks:
+- no fileContent field on message objects
+- no body field on message objects
+- no data field on message objects
+- no base64 field on message objects
+- no blob field on message objects
+- attachment entries contain only id, name, path, mimeType, size, source
+
+Result:
+- PASS

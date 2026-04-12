@@ -1,0 +1,10 @@
+﻿
+[1m[46m RUN [49m[22m [36mv3.2.4 [39m[90mD:/agi-project/acp-ui[39m
+
+ [32m鉁?[39m src/__tests__/cross-platform-contract.test.ts [2m([22m[2m3 tests[22m[2m)[22m[32m 12[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m3 passed[39m[22m[90m (3)[39m
+[2m   Start at [22m 18:04:32
+[2m   Duration [22m 1.65s[2m (transform 177ms, setup 82ms, collect 138ms, tests 12ms, environment 877ms, prepare 214ms)[22m
+

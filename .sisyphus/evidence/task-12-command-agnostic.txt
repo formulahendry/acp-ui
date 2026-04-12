@@ -1,0 +1,20 @@
+Task 12 evidence - generic attachment send behavior
+
+Audit findings:
+- ChatView handleAttach/handleSend/template contain no ingest-only branching; pending attachments are selected, validated, rendered, and sent through one generic path.
+- sessionStore.sendPrompt(text, attachments) always builds one text block plus optional serialized attachment resource_link blocks with no command-specific checks.
+- src/lib/attachments.ts and src/lib/file-picker.ts contain no ingest/command branching.
+- Platform-specific picker logic remains isolated to src/lib/file-picker.ts via the mockable _rawPicker seam.
+- No scope creep detected: no drag/drop, clipboard paste, preview thumbnails, upload progress, base64 embedding, custom Rust command, ACP extension, or upload service layer.
+
+Added test:
+- src/__tests__/integration-command-agnostic.test.ts
+- Verifies /ingest some-text, /query some-text, and plain text all use the same sendPrompt attachment path.
+- Asserts identical attachment metadata on stored user messages and identical resource_link block structure apart from the text block content itself.
+
+Verification:
+- npx vitest run -> 12 passed files, 46 passed tests
+- npx vue-tsc --noEmit -> passed
+
+Result:
+- Generic attachments are command-agnostic and flow through the existing UI/store/serialization path without special-casing.

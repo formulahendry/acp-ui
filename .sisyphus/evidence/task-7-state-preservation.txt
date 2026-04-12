@@ -1,0 +1,10 @@
+Validated pending attachment state preservation during invalid selections.
+
+Results:
+- Existing valid pending attachments survive later invalid picks.
+- Duplicate and over-count cases are rejected without clearing valid chips.
+- Composer feedback remains generic and composable.
+
+Verification:
+- npm test ✅
+- npm run build ✅
