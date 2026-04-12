@@ -6,6 +6,7 @@ import ModePicker from './ModePicker.vue';
 import ModelPicker from './ModelPicker.vue';
 import CommandPalette from './CommandPalette.vue';
 import type { SlashCommand, AttachmentRef } from '../lib/types';
+import { validateAttachments } from '../lib/attachments';
 import { pickFiles } from '../lib/file-picker';
 
 const sessionStore = useSessionStore();
@@ -15,11 +16,34 @@ const commandPaletteRef = ref<InstanceType<typeof CommandPalette> | null>(null);
 
 // Pending attachments state
 const pendingAttachments = ref<AttachmentRef[]>([]);
+const rejectionMessages = ref<string[]>([]);
+let rejectionTimer: ReturnType<typeof setTimeout> | null = null;
+
+function setRejectionMessages(messages: string[]): void {
+  rejectionMessages.value = messages;
+
+  if (rejectionTimer) {
+    clearTimeout(rejectionTimer);
+  }
+
+  rejectionTimer = setTimeout(() => {
+    rejectionMessages.value = [];
+    rejectionTimer = null;
+  }, 5000);
+}
 
 async function handleAttach() {
   const selected = await pickFiles();
-  if (selected.length > 0) {
-    pendingAttachments.value = [...pendingAttachments.value, ...selected];
+  if (selected.length === 0) return;
+
+  const result = validateAttachments(selected, pendingAttachments.value);
+
+  if (result.valid.length > 0) {
+    pendingAttachments.value = [...pendingAttachments.value, ...result.valid];
+  }
+
+  if (result.rejected.length > 0) {
+    setRejectionMessages(result.rejected.map((r) => `${r.name}: ${r.reason}`));
   }
 }
 
@@ -261,6 +285,13 @@ function getStatusIcon(status: string): string {
         @select="handleCommandSelect"
         @close="handleCommandClose"
       />
+
+      <!-- Attachment validation messages -->
+      <div v-if="rejectionMessages.length > 0" class="attachment-rejections">
+        <div v-for="(msg, index) in rejectionMessages" :key="index" class="rejection-message">
+          ⚠️ {{ msg }}
+        </div>
+      </div>
       
       <div class="input-layout">
         <!-- Pending attachments chips -->
@@ -512,6 +543,16 @@ function getStatusIcon(status: string): string {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+}
+
+.attachment-rejections {
+  padding: 0.5rem 0.75rem;
+}
+
+.rejection-message {
+  font-size: 0.8rem;
+  color: var(--text-warning, #b45309);
+  padding: 0.125rem 0;
 }
 
 .input-row {

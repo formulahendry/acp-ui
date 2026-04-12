@@ -1,0 +1,10 @@
+Validated composer rejection handling for invalid attachment selections.
+
+Results:
+- Disallowed files are filtered out with visible feedback.
+- Rejection messages render in the composer area.
+- Valid attachments remain available alongside rejections.
+
+Verification:
+- npm test ✅
+- npm run build ✅
