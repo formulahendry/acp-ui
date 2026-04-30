@@ -360,19 +360,24 @@ async function handleDelete(name: string) {
 .agent-transport-badge {
   display: inline-block;
   margin-left: 0.5rem;
-  padding: 0.05rem 0.4rem;
+  padding: 0.1rem 0.5rem;
   border-radius: 999px;
   font-size: 0.7rem;
-  font-weight: 500;
+  font-weight: 600;
+  letter-spacing: 0.02em;
   text-transform: uppercase;
   vertical-align: middle;
-  background: var(--bg-code, #eee);
-  color: var(--text-secondary, #555);
+  border: 1px solid transparent;
+  /* Default (stdio) — emerald to convey "local process". */
+  background: #ecfdf5;
+  color: #047857;
+  border-color: #a7f3d0;
 }
 .agent-transport-badge[data-kind='websocket'],
 .agent-transport-badge[data-kind='http'] {
   background: #e0f2fe;
   color: #0369a1;
+  border-color: #bae6fd;
 }
 
 .settings-panel {
