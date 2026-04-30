@@ -46,4 +46,3 @@ export function isDesktop(): boolean {
   const p = getPlatform();
   return p === 'macos' || p === 'linux' || p === 'windows';
 }
-

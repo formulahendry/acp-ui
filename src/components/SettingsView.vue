@@ -278,9 +278,9 @@ async function handleDelete(name: string) {
                 <label>Headers</label>
                 <EnvVarEditor v-model="formHeaders" />
                 <small>
-                  Authorization headers are sent over the connection. WebSocket browsers cannot
-                  attach arbitrary headers; an <code>Authorization: Bearer &lt;token&gt;</code> header is
-                  forwarded as a <code>bearer.&lt;token&gt;</code> WebSocket subprotocol.
+                  Authorization headers are sent over the connection. Browser WebSocket APIs
+                  cannot attach arbitrary HTTP headers; an <code>Authorization: Bearer &lt;token&gt;</code>
+                  header is forwarded as a <code>bearer.&lt;token&gt;</code> WebSocket subprotocol.
                 </small>
               </div>
             </template>

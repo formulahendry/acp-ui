@@ -171,14 +171,17 @@ export class WebSocketTransport implements AcpTransport {
         console.warn('Error closing WebSocket:', e);
       }
     }
-    // Mark closed *after* invoking ws.close so `handleClose` (fired by the
-    // browser) reports the actual close code rather than our synthetic
-    // "closed by client" reason.
-    setTimeout(() => {
+    // The browser will deliver a `close` event on a separate tick. If it
+    // does, `handleClose` runs first and sets `this.closed = true`, in
+    // which case our microtask below is a no-op. If, however, the close
+    // event never fires (e.g. the WS was already in CLOSING/CLOSED state
+    // and the browser elides the event), we synthesise a close so
+    // listeners aren't left waiting forever.
+    queueMicrotask(() => {
       if (!this.closed) {
         this.handleClose('closed by client');
       }
-    }, 0);
+    });
   }
 }
 

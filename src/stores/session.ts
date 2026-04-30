@@ -7,7 +7,7 @@ import { trackEvent, trackError } from '../lib/telemetry';
 import type { SavedSession, ChatMessage, ToolCallInfo, PermissionRequest, SessionMode, SlashCommand, ModelInfo, AgentConfig } from '../lib/types';
 import { getTransportKind } from '../lib/types';
 import { AcpClientBridge, createAcpClient } from '../lib/acp-bridge';
-import { onAgentStderr } from '../lib/tauri';
+import { onAgentStderr, spawnAgent } from '../lib/tauri';
 import { useConfigStore } from './config';
 import type { SessionNotification, AuthMethod } from '@agentclientprotocol/sdk';
 
@@ -294,11 +294,15 @@ export const useSessionStore = defineStore('session', () => {
       }
 
       if (!isRemote) {
-        // Listen for stderr to track startup progress (only meaningful for
-        // stdio agents). The transport itself is created via the bridge
-        // factory below; we register stderr first so we don't miss early
-        // output, but we filter on agent_id once we know it.
+        // For stdio agents we need the spawned process's id up front so the
+        // stderr listener can filter on it (multiple agents may be running
+        // concurrently). We spawn here, hand the resulting AgentInstance to
+        // a StdioTransport, then build the bridge from that transport.
+        startupPhase.value = 'starting';
+        const agentInstance = await spawnAgent(agentName);
+
         stderrUnlisten = await onAgentStderr((stderr) => {
+          if (stderr.agent_id !== agentInstance.id) return;
           startupLogs.value.push(stderr.line);
           // Detect phase from output
           const detectedPhase = detectPhase(stderr.line);
@@ -306,21 +310,31 @@ export const useSessionStore = defineStore('session', () => {
             startupPhase.value = detectedPhase;
           }
         }) as unknown as () => void;
+
+        if (connectionAborted) {
+          throw new Error('Connection cancelled');
+        }
+
+        startupPhase.value = 'initializing';
+
+        // Wrap the just-spawned instance in a StdioTransport. Using the
+        // legacy single-arg form keeps backward compatibility and avoids a
+        // double-spawn (StdioTransport.spawn would call spawnAgent again).
+        acpClient = await createAcpClient(agentInstance);
       } else {
         // Remote agents have no stderr stream; show a minimal "connecting"
         // state instead of the multi-phase progress UI.
         startupPhase.value = 'connecting';
+
+        if (connectionAborted) {
+          throw new Error('Connection cancelled');
+        }
+
+        // The factory opens a WebSocket / HTTP connection based on
+        // agentConfig.transport.
+        acpClient = await createAcpClient({ name: agentName, config: agentConfig });
       }
 
-      if (connectionAborted) {
-        throw new Error('Connection cancelled');
-      }
-
-      startupPhase.value = isRemote ? 'connecting' : 'initializing';
-
-      // Create ACP client bridge — the factory selects stdio / websocket /
-      // http transport based on agentConfig.transport.
-      acpClient = await createAcpClient({ name: agentName, config: agentConfig });
       acpClient.onSessionUpdate = handleSessionUpdate;
       
       // Sync bridge's pendingPermissionRequest to store's pendingPermission
