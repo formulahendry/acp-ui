@@ -1,7 +1,9 @@
 // Agent configuration store with hot-reload support
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
-import type { AgentsConfig, AgentConfig } from '../lib/types';
+import type { AgentsConfig, AgentConfig, AgentTransportKind } from '../lib/types';
+import { getTransportKind } from '../lib/types';
+import { isMobile } from '../lib/platform';
 import { getConfig, reloadConfig, getConfigPath, onConfigChanged } from '../lib/tauri';
 
 export const useConfigStore = defineStore('config', () => {
@@ -10,9 +12,38 @@ export const useConfigStore = defineStore('config', () => {
   const loading = ref(false);
   const error = ref<string | null>(null);
 
-  const agentNames = computed(() => Object.keys(config.value.agents));
-  
+  // Stdio agents are listed in the raw config but cannot run on mobile
+  // builds (no subprocess). Filter them out so the UI never offers an
+  // option that immediately fails.
+  const allAgentNames = computed(() => Object.keys(config.value.agents));
+
+  const agentNames = computed(() => {
+    if (!isMobile()) return allAgentNames.value;
+    return allAgentNames.value.filter(
+      (name) => getTransportKind(config.value.agents[name]) !== 'stdio'
+    );
+  });
+
   const hasAgents = computed(() => agentNames.value.length > 0);
+
+  /** Transport kind for an agent (defaults to 'stdio' for unknown names). */
+  function getAgentTransportKind(name: string): AgentTransportKind {
+    const c = config.value.agents[name];
+    return c ? getTransportKind(c) : 'stdio';
+  }
+
+  const stdioAgentNames = computed(() =>
+    allAgentNames.value.filter(
+      (name) => getTransportKind(config.value.agents[name]) === 'stdio'
+    )
+  );
+
+  const remoteAgentNames = computed(() =>
+    allAgentNames.value.filter((name) => {
+      const k = getTransportKind(config.value.agents[name]);
+      return k === 'websocket' || k === 'http';
+    })
+  );
 
   async function loadConfig() {
     loading.value = true;
@@ -66,7 +97,11 @@ export const useConfigStore = defineStore('config', () => {
     loading,
     error,
     agentNames,
+    allAgentNames,
+    stdioAgentNames,
+    remoteAgentNames,
     hasAgents,
+    getAgentTransportKind,
     loadConfig,
     reload,
     getAgent,

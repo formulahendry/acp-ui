@@ -2,7 +2,7 @@ mod agent;
 mod config;
 
 use agent::{AgentInstance, AgentManager};
-use config::{AgentConfig, AgentsConfig, ConfigManager};
+use config::{AgentConfig, AgentTransport, AgentsConfig, ConfigManager};
 use parking_lot::RwLock;
 use std::sync::Arc;
 use tauri::{AppHandle, Manager, State};
@@ -77,18 +77,23 @@ fn list_running_agents(state: State<AppState>) -> Vec<String> {
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 fn add_agent(
     name: String,
-    command: String,
-    args: Vec<String>,
-    env: std::collections::HashMap<String, String>,
+    command: Option<String>,
+    args: Option<Vec<String>>,
+    env: Option<std::collections::HashMap<String, String>>,
+    transport: Option<String>,
+    url: Option<String>,
+    headers: Option<std::collections::HashMap<String, String>>,
     state: State<AppState>,
 ) -> Result<AgentsConfig, String> {
+    let agent_config = build_agent_config(command, args, env, transport, url, headers)?;
     let config_manager = state.config_manager.read();
     config_manager
         .as_ref()
         .ok_or_else(|| "Config manager not initialized".to_string())?
-        .add_agent(name, AgentConfig { command, args, env })
+        .add_agent(name, agent_config)
 }
 
 #[tauri::command]
@@ -101,18 +106,88 @@ fn remove_agent(name: String, state: State<AppState>) -> Result<AgentsConfig, St
 }
 
 #[tauri::command]
+#[allow(clippy::too_many_arguments)]
 fn update_agent(
     name: String,
-    command: String,
-    args: Vec<String>,
-    env: std::collections::HashMap<String, String>,
+    command: Option<String>,
+    args: Option<Vec<String>>,
+    env: Option<std::collections::HashMap<String, String>>,
+    transport: Option<String>,
+    url: Option<String>,
+    headers: Option<std::collections::HashMap<String, String>>,
     state: State<AppState>,
 ) -> Result<AgentsConfig, String> {
+    let agent_config = build_agent_config(command, args, env, transport, url, headers)?;
     let config_manager = state.config_manager.read();
     config_manager
         .as_ref()
         .ok_or_else(|| "Config manager not initialized".to_string())?
-        .update_agent(name, AgentConfig { command, args, env })
+        .update_agent(name, agent_config)
+}
+
+/// Build an `AgentConfig` from the loosely-typed Tauri command arguments,
+/// applying validation rules per transport kind.
+fn build_agent_config(
+    command: Option<String>,
+    args: Option<Vec<String>>,
+    env: Option<std::collections::HashMap<String, String>>,
+    transport: Option<String>,
+    url: Option<String>,
+    headers: Option<std::collections::HashMap<String, String>>,
+) -> Result<AgentConfig, String> {
+    let transport_kind = match transport.as_deref() {
+        None | Some("") | Some("stdio") => AgentTransport::Stdio,
+        Some("websocket") | Some("ws") | Some("wss") => AgentTransport::Websocket,
+        Some("http") | Some("https") => AgentTransport::Http,
+        Some(other) => return Err(format!("Unknown transport: {}", other)),
+    };
+
+    match transport_kind {
+        AgentTransport::Stdio => {
+            let command = command
+                .filter(|s| !s.is_empty())
+                .ok_or_else(|| "stdio agent requires a command".to_string())?;
+            Ok(AgentConfig {
+                transport: AgentTransport::Stdio,
+                command: Some(command),
+                args: Some(args.unwrap_or_default()),
+                env: env.unwrap_or_default(),
+                url: None,
+                headers: None,
+            })
+        }
+        AgentTransport::Websocket | AgentTransport::Http => {
+            let url = url
+                .filter(|s| !s.is_empty())
+                .ok_or_else(|| "remote agent requires a url".to_string())?;
+            // Sanity-check scheme matches transport so users get an early error.
+            let lower = url.to_ascii_lowercase();
+            let scheme_ok = match transport_kind {
+                AgentTransport::Websocket => {
+                    lower.starts_with("ws://") || lower.starts_with("wss://")
+                }
+                AgentTransport::Http => {
+                    lower.starts_with("http://") || lower.starts_with("https://")
+                }
+                _ => true,
+            };
+            if !scheme_ok {
+                return Err(format!(
+                    "URL scheme does not match transport '{:?}': {}",
+                    transport_kind, url
+                ));
+            }
+            let headers = headers.filter(|h| !h.is_empty());
+            Ok(AgentConfig {
+                transport: transport_kind,
+                command: None,
+                args: None,
+                env: std::collections::HashMap::new(),
+                url: Some(url),
+                headers,
+            })
+        }
+    }
 }
 
 #[tauri::command]

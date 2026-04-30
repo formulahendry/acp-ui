@@ -1,20 +1,30 @@
-use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::io::{BufRead, BufReader, Write};
-use std::process::{Child, Command, Stdio};
-use std::sync::Arc;
-use std::thread;
-use tauri::{AppHandle, Emitter};
-use uuid::Uuid;
 
-#[cfg(target_os = "windows")]
+#[cfg(desktop)]
+use parking_lot::RwLock;
+#[cfg(desktop)]
+use std::collections::HashMap;
+#[cfg(desktop)]
+use std::io::{BufRead, BufReader, Write};
+#[cfg(desktop)]
+use std::process::{Child, Command, Stdio};
+#[cfg(desktop)]
+use std::sync::Arc;
+#[cfg(desktop)]
+use std::thread;
+#[cfg(desktop)]
+use tauri::Emitter;
+#[cfg(desktop)]
+use uuid::Uuid;
+use tauri::AppHandle;
+
+#[cfg(all(desktop, target_os = "windows"))]
 use std::os::windows::process::CommandExt;
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(all(desktop, not(target_os = "windows")))]
 use shell_escape;
 
-use crate::config::AgentConfig;
+use crate::config::{AgentConfig, AgentTransport};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentInstance {
@@ -34,16 +44,27 @@ pub struct AgentStderr {
     pub line: String,
 }
 
+#[cfg(desktop)]
 struct RunningAgent {
     #[allow(dead_code)]
     child: Child,
     stdin: Arc<RwLock<std::process::ChildStdin>>,
 }
 
+#[cfg(desktop)]
 pub struct AgentManager {
     agents: Arc<RwLock<HashMap<String, RunningAgent>>>,
 }
 
+#[cfg(not(desktop))]
+pub struct AgentManager {
+    // Mobile builds keep the type so command handlers compile, but the
+    // stdio transport is unavailable: any spawn attempt errors out and the
+    // app is expected to use a remote (websocket/http) transport instead.
+    _phantom: std::marker::PhantomData<()>,
+}
+
+#[cfg(desktop)]
 impl AgentManager {
     pub fn new() -> Self {
         Self {
@@ -57,6 +78,22 @@ impl AgentManager {
         config: &AgentConfig,
         app_handle: AppHandle,
     ) -> Result<AgentInstance, String> {
+        // Reject non-stdio agents on the spawn path. Remote agents are
+        // handled entirely on the frontend (browser WebSocket / fetch),
+        // so we should never get here for them.
+        if config.transport != AgentTransport::Stdio {
+            return Err(format!(
+                "Agent '{}' uses '{:?}' transport which is not stdio; spawn_agent is stdio-only",
+                name, config.transport
+            ));
+        }
+
+        let command = config
+            .command
+            .as_ref()
+            .ok_or_else(|| format!("stdio agent '{}' is missing 'command'", name))?;
+        let args: &[String] = config.args.as_deref().unwrap_or(&[]);
+
         let agent_id = Uuid::new_v4().to_string();
 
         // On Windows, we need to use cmd.exe to properly resolve .cmd/.bat files like npx
@@ -64,8 +101,8 @@ impl AgentManager {
         let mut child = {
             let mut cmd = Command::new("cmd");
             cmd.arg("/C")
-                .arg(&config.command)
-                .args(&config.args)
+                .arg(command)
+                .args(args)
                 .envs(&config.env)
                 .stdin(Stdio::piped())
                 .stdout(Stdio::piped())
@@ -80,12 +117,11 @@ impl AgentManager {
             use std::borrow::Cow;
 
             // Build shell command with proper quoting for command and arguments
-            let escaped_command = shell_escape::escape(Cow::Borrowed(config.command.as_str()));
-            let shell_command = if config.args.is_empty() {
+            let escaped_command = shell_escape::escape(Cow::Borrowed(command.as_str()));
+            let shell_command = if args.is_empty() {
                 escaped_command.to_string()
             } else {
-                let quoted_args: Vec<String> = config
-                    .args
+                let quoted_args: Vec<String> = args
                     .iter()
                     .map(|arg| shell_escape::escape(Cow::Borrowed(arg.as_str())).to_string())
                     .collect();
@@ -226,6 +262,36 @@ impl AgentManager {
 
     pub fn list_running_agents(&self) -> Vec<String> {
         self.agents.read().keys().cloned().collect()
+    }
+}
+
+#[cfg(not(desktop))]
+impl AgentManager {
+    pub fn new() -> Self {
+        Self {
+            _phantom: std::marker::PhantomData,
+        }
+    }
+
+    pub fn spawn_agent(
+        &self,
+        _name: String,
+        _config: &AgentConfig,
+        _app_handle: AppHandle,
+    ) -> Result<AgentInstance, String> {
+        Err("stdio agents are not supported on this platform; configure a websocket or http transport".to_string())
+    }
+
+    pub fn send_message(&self, _agent_id: &str, _message: &str) -> Result<(), String> {
+        Err("stdio agents are not supported on this platform".to_string())
+    }
+
+    pub fn kill_agent(&self, _agent_id: &str) -> Result<(), String> {
+        Ok(())
+    }
+
+    pub fn list_running_agents(&self) -> Vec<String> {
+        Vec::new()
     }
 }
 

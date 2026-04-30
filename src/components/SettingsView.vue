@@ -2,6 +2,8 @@
 import { ref, computed } from 'vue';
 import { useConfigStore } from '../stores/config';
 import { addAgent, removeAgent, updateAgent } from '../lib/tauri';
+import { getTransportKind, type AgentTransportKind } from '../lib/types';
+import { isMobile } from '../lib/platform';
 import EnvVarEditor from './EnvVarEditor.vue';
 
 const emit = defineEmits<{
@@ -10,30 +12,53 @@ const emit = defineEmits<{
 
 const configStore = useConfigStore();
 
-const agents = computed(() => {
+interface AgentRow {
+  name: string;
+  transport: AgentTransportKind;
+  command: string;
+  args: string;
+  env: Record<string, string>;
+  url: string;
+  headers: Record<string, string>;
+}
+
+const agents = computed<AgentRow[]>(() => {
   return Object.entries(configStore.config.agents).map(([name, config]) => ({
     name,
-    command: config.command,
-    args: config.args.join(' '),
-    env: config.env || {},
+    transport: getTransportKind(config),
+    command: config.command ?? '',
+    args: (config.args ?? []).join(' '),
+    env: config.env ?? {},
+    url: config.url ?? '',
+    headers: config.headers ?? {},
   }));
 });
+
+// True on iOS / Android: hide the stdio option and disable editing of any
+// existing stdio agents (they cannot run there anyway).
+const mobile = isMobile();
 
 // Form state
 const showAddForm = ref(false);
 const editingAgent = ref<string | null>(null);
 const formName = ref('');
+const formTransport = ref<AgentTransportKind>(mobile ? 'websocket' : 'stdio');
 const formCommand = ref('');
 const formArgs = ref('');
 const formEnv = ref<Record<string, string>>({});
+const formUrl = ref('');
+const formHeaders = ref<Record<string, string>>({});
 const formError = ref('');
 const isSubmitting = ref(false);
 
 function resetForm() {
   formName.value = '';
+  formTransport.value = mobile ? 'websocket' : 'stdio';
   formCommand.value = '';
   formArgs.value = '';
   formEnv.value = {};
+  formUrl.value = '';
+  formHeaders.value = {};
   formError.value = '';
   showAddForm.value = false;
   editingAgent.value = null;
@@ -44,13 +69,16 @@ function startAdd() {
   showAddForm.value = true;
 }
 
-function startEdit(agent: { name: string; command: string; args: string; env: Record<string, string> }) {
+function startEdit(agent: AgentRow) {
   resetForm();
   editingAgent.value = agent.name;
   formName.value = agent.name;
+  formTransport.value = agent.transport;
   formCommand.value = agent.command;
   formArgs.value = agent.args;
   formEnv.value = { ...agent.env };
+  formUrl.value = agent.url;
+  formHeaders.value = { ...agent.headers };
 }
 
 function parseArgs(argsString: string): string[] {
@@ -84,13 +112,9 @@ function parseArgs(argsString: string): string[] {
 
 async function handleSubmit() {
   formError.value = '';
-  
+
   if (!formName.value.trim()) {
     formError.value = 'Name is required';
-    return;
-  }
-  if (!formCommand.value.trim()) {
-    formError.value = 'Command is required';
     return;
   }
 
@@ -100,12 +124,46 @@ async function handleSubmit() {
     return;
   }
 
-  const args = parseArgs(formArgs.value);
+  const transport = formTransport.value;
+  const isRemote = transport !== 'stdio';
+
+  if (isRemote) {
+    if (!formUrl.value.trim()) {
+      formError.value = 'URL is required for remote agents';
+      return;
+    }
+    const lower = formUrl.value.trim().toLowerCase();
+    if (transport === 'websocket' && !(lower.startsWith('ws://') || lower.startsWith('wss://'))) {
+      formError.value = 'WebSocket URL must start with ws:// or wss://';
+      return;
+    }
+    if (transport === 'http' && !(lower.startsWith('http://') || lower.startsWith('https://'))) {
+      formError.value = 'HTTP URL must start with http:// or https://';
+      return;
+    }
+  } else {
+    if (!formCommand.value.trim()) {
+      formError.value = 'Command is required';
+      return;
+    }
+  }
+
+  const args = isRemote ? [] : parseArgs(formArgs.value);
   isSubmitting.value = true;
 
   try {
+    const remoteOpts = isRemote
+      ? {
+          transport: transport as 'websocket' | 'http',
+          url: formUrl.value.trim(),
+          headers: Object.keys(formHeaders.value).length > 0 ? formHeaders.value : undefined,
+        }
+      : {};
+    const command = isRemote ? null : formCommand.value;
+    const env = isRemote ? {} : formEnv.value;
+
     if (editingAgent.value) {
-      const newConfig = await updateAgent(formName.value, formCommand.value, args, formEnv.value);
+      const newConfig = await updateAgent(formName.value, command, args, env, remoteOpts);
       configStore.updateFromEvent(newConfig);
     } else {
       // Check for duplicates
@@ -114,7 +172,7 @@ async function handleSubmit() {
         isSubmitting.value = false;
         return;
       }
-      const newConfig = await addAgent(formName.value, formCommand.value, args, formEnv.value);
+      const newConfig = await addAgent(formName.value, command, args, env, remoteOpts);
       configStore.updateFromEvent(newConfig);
     }
     resetForm();
@@ -127,7 +185,7 @@ async function handleSubmit() {
 
 async function handleDelete(name: string) {
   if (!confirm(`Delete agent "${name}"?`)) return;
-  
+
   try {
     const newConfig = await removeAgent(name);
     configStore.updateFromEvent(newConfig);
@@ -157,47 +215,83 @@ async function handleDelete(name: string) {
           <!-- Add/Edit Form -->
           <div v-if="showAddForm || editingAgent" class="agent-form">
             <h4>{{ editingAgent ? 'Edit Agent' : 'Add New Agent' }}</h4>
-            
+
             <div class="form-group">
               <label>Name</label>
-              <input 
-                v-model="formName" 
-                type="text" 
+              <input
+                v-model="formName"
+                type="text"
                 placeholder="My Agent"
                 :disabled="!!editingAgent"
               />
             </div>
 
             <div class="form-group">
-              <label>Command</label>
-              <input 
-                v-model="formCommand" 
-                type="text" 
-                placeholder="npx"
-              />
+              <label>Transport</label>
+              <select v-model="formTransport">
+                <option v-if="!mobile" value="stdio">stdio (local subprocess)</option>
+                <option value="websocket">websocket (remote)</option>
+                <option value="http">http (remote)</option>
+              </select>
+              <small v-if="mobile">stdio is not available on mobile.</small>
             </div>
 
-            <div class="form-group">
-              <label>Arguments</label>
-              <input 
-                v-model="formArgs" 
-                type="text" 
-                placeholder="-y @example/agent"
-              />
-              <small>Space-separated. Use quotes for args with spaces.</small>
-            </div>
+            <template v-if="formTransport === 'stdio'">
+              <div class="form-group">
+                <label>Command</label>
+                <input
+                  v-model="formCommand"
+                  type="text"
+                  placeholder="npx"
+                />
+              </div>
 
-            <div class="form-group">
-              <EnvVarEditor v-model="formEnv" />
-            </div>
+              <div class="form-group">
+                <label>Arguments</label>
+                <input
+                  v-model="formArgs"
+                  type="text"
+                  placeholder="-y @example/agent"
+                />
+                <small>Space-separated. Use quotes for args with spaces.</small>
+              </div>
+
+              <div class="form-group">
+                <EnvVarEditor v-model="formEnv" />
+              </div>
+            </template>
+
+            <template v-else>
+              <div class="form-group">
+                <label>URL</label>
+                <input
+                  v-model="formUrl"
+                  type="text"
+                  :placeholder="formTransport === 'websocket' ? 'wss://acp.example.com/v1' : 'https://acp.example.com/v1'"
+                />
+                <small>
+                  {{ formTransport === 'websocket' ? 'WebSocket endpoint (ws:// or wss://)' : 'Streamable HTTP endpoint (http:// or https://)' }}
+                </small>
+              </div>
+
+              <div class="form-group">
+                <label>Headers</label>
+                <EnvVarEditor v-model="formHeaders" />
+                <small>
+                  Authorization headers are sent over the connection. Browser WebSocket APIs
+                  cannot attach arbitrary HTTP headers; an <code>Authorization: Bearer &lt;token&gt;</code>
+                  header is forwarded as a <code>bearer.&lt;token&gt;</code> WebSocket subprotocol.
+                </small>
+              </div>
+            </template>
 
             <div v-if="formError" class="form-error">
               {{ formError }}
             </div>
 
             <div class="form-actions">
-              <button 
-                class="save-btn" 
+              <button
+                class="save-btn"
                 @click="handleSubmit"
                 :disabled="isSubmitting"
               >
@@ -211,15 +305,19 @@ async function handleDelete(name: string) {
 
           <!-- Agent List -->
           <div class="agents-list">
-            <div 
-              v-for="agent in agents" 
+            <div
+              v-for="agent in agents"
               :key="agent.name"
               class="agent-item"
             >
               <div class="agent-info">
-                <div class="agent-name">{{ agent.name }}</div>
+                <div class="agent-name">
+                  {{ agent.name }}
+                  <span class="agent-transport-badge" :data-kind="agent.transport">{{ agent.transport }}</span>
+                </div>
                 <div class="agent-command">
-                  <code>{{ agent.command }} {{ agent.args }}</code>
+                  <code v-if="agent.transport === 'stdio'">{{ agent.command }} {{ agent.args }}</code>
+                  <code v-else>{{ agent.url }}</code>
                 </div>
               </div>
               <div class="agent-actions">
@@ -257,6 +355,29 @@ async function handleDelete(name: string) {
   align-items: center;
   justify-content: center;
   z-index: 1000;
+}
+
+.agent-transport-badge {
+  display: inline-block;
+  margin-left: 0.5rem;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  vertical-align: middle;
+  border: 1px solid transparent;
+  /* Default (stdio) — emerald to convey "local process". */
+  background: #ecfdf5;
+  color: #047857;
+  border-color: #a7f3d0;
+}
+.agent-transport-badge[data-kind='websocket'],
+.agent-transport-badge[data-kind='http'] {
+  background: #e0f2fe;
+  color: #0369a1;
+  border-color: #bae6fd;
 }
 
 .settings-panel {

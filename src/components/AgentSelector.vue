@@ -14,6 +14,17 @@ const agents = computed(() => configStore.agentNames);
 const hasAgents = computed(() => configStore.hasAgents);
 const configPath = computed(() => configStore.configPath);
 
+/** Build the display label for each agent once, instead of calling
+ * `getAgentTransportKind` twice per option in the template. */
+const agentLabels = computed<Record<string, string>>(() => {
+  const out: Record<string, string> = {};
+  for (const name of agents.value) {
+    const kind = configStore.getAgentTransportKind(name);
+    out[name] = kind === 'stdio' ? name : `${name} (${kind})`;
+  }
+  return out;
+});
+
 // Auto-select first agent when agents are available and none selected
 watch(agents, (newAgents) => {
   if (newAgents.length > 0 && !selectedAgent.value) {
@@ -44,7 +55,7 @@ function handleSelect(event: Event) {
         {{ hasAgents ? 'Select an agent...' : 'No agents configured' }}
       </option>
       <option v-for="agent in agents" :key="agent" :value="agent">
-        {{ agent }}
+        {{ agentLabels[agent] }}
       </option>
     </select>
     

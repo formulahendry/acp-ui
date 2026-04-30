@@ -7,12 +7,64 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter};
 
+/// Transport kind for an ACP agent.
+///
+/// `stdio` (default, desktop only) launches a subprocess and exchanges
+/// JSON-RPC over stdin/stdout. `websocket` and `http` connect to a remote
+/// endpoint advertised by an agent that natively speaks ACP over the wire,
+/// and require the corresponding `url`/`headers` fields.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum AgentTransport {
+    #[default]
+    Stdio,
+    Websocket,
+    Http,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AgentConfig {
-    pub command: String,
-    pub args: Vec<String>,
-    #[serde(default)]
+    /// Transport kind. Defaults to `stdio` for backward compatibility with
+    /// existing `agents.json` files that only contain `command`/`args`.
+    #[serde(default, skip_serializing_if = "is_default_transport")]
+    pub transport: AgentTransport,
+
+    // ----- stdio-only fields (optional when transport != stdio) -----
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub command: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub args: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
     pub env: std::collections::HashMap<String, String>,
+
+    // ----- remote-only fields (optional, used when transport != stdio) -----
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub headers: Option<std::collections::HashMap<String, String>>,
+}
+
+fn is_default_transport(t: &AgentTransport) -> bool {
+    *t == AgentTransport::Stdio
+}
+
+impl AgentConfig {
+    /// Build a stdio-transport agent config (used by defaults and
+    /// backward-compatible callers).
+    pub fn stdio(
+        command: String,
+        args: Vec<String>,
+        env: std::collections::HashMap<String, String>,
+    ) -> Self {
+        Self {
+            transport: AgentTransport::Stdio,
+            command: Some(command),
+            args: Some(args),
+            env,
+            url: None,
+            headers: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -25,105 +77,95 @@ impl Default for AgentsConfig {
         let mut agents = IndexMap::new();
         agents.insert(
             "GitHub Copilot".to_string(),
-            AgentConfig {
-                command: "npx".to_string(),
-                args: vec![
+            AgentConfig::stdio(
+                "npx".to_string(),
+                vec![
                     "@github/copilot-language-server@latest".to_string(),
                     "--acp".to_string(),
                 ],
-                env: std::collections::HashMap::new(),
-            },
+                std::collections::HashMap::new(),
+            ),
         );
         agents.insert(
             "Claude Code".to_string(),
-            AgentConfig {
-                command: "npx".to_string(),
-                args: vec![
-                    "@zed-industries/claude-code-acp@latest".to_string(),
-                ],
-                env: std::collections::HashMap::new(),
-            },
+            AgentConfig::stdio(
+                "npx".to_string(),
+                vec!["@zed-industries/claude-code-acp@latest".to_string()],
+                std::collections::HashMap::new(),
+            ),
         );
         agents.insert(
             "Gemini CLI".to_string(),
-            AgentConfig {
-                command: "npx".to_string(),
-                args: vec![
+            AgentConfig::stdio(
+                "npx".to_string(),
+                vec![
                     "@google/gemini-cli@latest".to_string(),
                     "--experimental-acp".to_string(),
                 ],
-                env: std::collections::HashMap::new(),
-            },
+                std::collections::HashMap::new(),
+            ),
         );
         agents.insert(
             "Qwen Code".to_string(),
-            AgentConfig {
-                command: "npx".to_string(),
-                args: vec![
+            AgentConfig::stdio(
+                "npx".to_string(),
+                vec![
                     "@qwen-code/qwen-code@latest".to_string(),
                     "--acp".to_string(),
                     "--experimental-skills".to_string(),
                 ],
-                env: std::collections::HashMap::new(),
-            },
+                std::collections::HashMap::new(),
+            ),
         );
         agents.insert(
             "Auggie CLI".to_string(),
-            AgentConfig {
-                command: "npx".to_string(),
-                args: vec![
+            AgentConfig::stdio(
+                "npx".to_string(),
+                vec![
                     "@augmentcode/auggie@latest".to_string(),
                     "--acp".to_string(),
                 ],
-                env: {
+                {
                     let mut env = std::collections::HashMap::new();
                     env.insert("AUGMENT_DISABLE_AUTO_UPDATE".to_string(), "1".to_string());
                     env
                 },
-            },
+            ),
         );
         agents.insert(
             "Qoder CLI".to_string(),
-            AgentConfig {
-                command: "npx".to_string(),
-                args: vec![
+            AgentConfig::stdio(
+                "npx".to_string(),
+                vec![
                     "@qoder-ai/qodercli@latest".to_string(),
                     "--acp".to_string(),
                 ],
-                env: std::collections::HashMap::new(),
-            },
+                std::collections::HashMap::new(),
+            ),
         );
         agents.insert(
             "Codex CLI".to_string(),
-            AgentConfig {
-                command: "npx".to_string(),
-                args: vec![
-                    "@zed-industries/codex-acp@latest".to_string(),
-                ],
-                env: std::collections::HashMap::new(),
-            },
+            AgentConfig::stdio(
+                "npx".to_string(),
+                vec!["@zed-industries/codex-acp@latest".to_string()],
+                std::collections::HashMap::new(),
+            ),
         );
         agents.insert(
             "OpenCode".to_string(),
-            AgentConfig {
-                command: "npx".to_string(),
-                args: vec![
-                    "opencode-ai@latest".to_string(),
-                    "acp".to_string(),
-                ],
-                env: std::collections::HashMap::new(),
-            },
+            AgentConfig::stdio(
+                "npx".to_string(),
+                vec!["opencode-ai@latest".to_string(), "acp".to_string()],
+                std::collections::HashMap::new(),
+            ),
         );
         agents.insert(
             "OpenClaw".to_string(),
-            AgentConfig {
-                command: "npx".to_string(),
-                args: vec![
-                    "openclaw".to_string(),
-                    "acp".to_string(),
-                ],
-                env: std::collections::HashMap::new(),
-            },
+            AgentConfig::stdio(
+                "npx".to_string(),
+                vec!["openclaw".to_string(), "acp".to_string()],
+                std::collections::HashMap::new(),
+            ),
         );
         AgentsConfig { agents }
     }
@@ -280,4 +322,48 @@ fn setup_watcher(
     }
 
     Ok(watcher)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Old-format `agents.json` files only contain `command/args/env`. The
+    /// new struct must still deserialize them as stdio agents so users
+    /// don't lose their config on upgrade.
+    #[test]
+    fn deserializes_legacy_stdio_config() {
+        let json = r#"{"agents":{"Legacy":{"command":"npx","args":["x"],"env":{}}}}"#;
+        let cfg: AgentsConfig = serde_json::from_str(json).unwrap();
+        let a = cfg.agents.get("Legacy").unwrap();
+        assert_eq!(a.transport, AgentTransport::Stdio);
+        assert_eq!(a.command.as_deref(), Some("npx"));
+        assert_eq!(a.url, None);
+    }
+
+    /// New-format remote agents must round-trip through serde without losing
+    /// the transport / url / headers fields.
+    #[test]
+    fn roundtrips_remote_websocket_config() {
+        let json = r#"{"agents":{"Remote":{"transport":"websocket","url":"wss://x/v1","headers":{"Authorization":"Bearer abc"}}}}"#;
+        let cfg: AgentsConfig = serde_json::from_str(json).unwrap();
+        let a = cfg.agents.get("Remote").unwrap();
+        assert_eq!(a.transport, AgentTransport::Websocket);
+        assert_eq!(a.url.as_deref(), Some("wss://x/v1"));
+        assert_eq!(a.command, None);
+        let serialized = serde_json::to_string(&cfg).unwrap();
+        // `transport: "stdio"` is omitted by skip_serializing_if; ensure
+        // websocket is present in the round-trip output.
+        assert!(serialized.contains("\"transport\":\"websocket\""));
+    }
+
+    #[test]
+    fn defaults_keep_all_nine_stdio_agents() {
+        let cfg = AgentsConfig::default();
+        assert_eq!(cfg.agents.len(), 9);
+        for (_, a) in &cfg.agents {
+            assert_eq!(a.transport, AgentTransport::Stdio);
+            assert!(a.command.is_some());
+        }
+    }
 }

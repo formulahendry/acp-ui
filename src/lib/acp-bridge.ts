@@ -1,4 +1,7 @@
-// ACP Client Bridge - Adapts Tauri IPC to ACP SDK
+// ACP Client Bridge - Adapts a generic AcpTransport to the ACP SDK's
+// Client interface. The bridge is transport-agnostic: it neither knows
+// nor cares whether the underlying byte stream is a local subprocess
+// (stdio), a WebSocket, or a Streamable HTTP connection.
 import type {
   Client,
   SessionNotification,
@@ -21,8 +24,10 @@ import type {
   AuthenticateResponse,
 } from '@agentclientprotocol/sdk';
 import { readTextFile as tauriReadTextFile, writeTextFile as tauriWriteTextFile } from '@tauri-apps/plugin-fs';
-import { sendToAgent, onAgentMessage, killAgent } from './tauri';
-import type { AgentInstance, PermissionRequest as LocalPermissionRequest } from './types';
+import type { AcpTransport, Unsubscribe } from './transport/types';
+import { createTransport, StdioTransport } from './transport';
+import type { AgentConfig, AgentInstance, PermissionRequest as LocalPermissionRequest } from './types';
+import { isMobile } from './platform';
 import { ref, type Ref } from 'vue';
 import { useTrafficStore } from '../stores/traffic';
 
@@ -38,14 +43,25 @@ function getTrafficStore() {
   return trafficStore;
 }
 
+/** JSON-RPC method-not-found error code. */
+const JSONRPC_METHOD_NOT_FOUND = -32601;
+
 export class AcpClientBridge implements Client {
-  private agentId: string;
+  private transport: AcpTransport;
+  /**
+   * Local filesystem RPCs (`fs/read_text_file`, `fs/write_text_file`) are
+   * handled by the Tauri fs plugin on desktop. On mobile builds the plugin is
+   * not available and these handlers respond with a method-not-found error
+   * so a misbehaving remote agent can't hang waiting for a response.
+   */
+  private fsAvailable: boolean;
   private messageResolvers: Map<number, (response: unknown) => void> = new Map();
   private messageRejecters: Map<number, (error: Error) => void> = new Map();
   private pendingMethods: Map<number, string> = new Map(); // Track method names for responses
   private nextRequestId = 0;
-  private unlistenMessage: (() => void) | null = null;
-  
+  private unlistenMessage: Unsubscribe | null = null;
+  private unlistenClose: Unsubscribe | null = null;
+
   // Permission request handling
   public pendingPermissionRequest: Ref<LocalPermissionRequest | null> = ref(null);
   private permissionResolver: PermissionResolver | null = null;
@@ -53,31 +69,78 @@ export class AcpClientBridge implements Client {
   // Session update callback
   public onSessionUpdate: ((notification: SessionNotification) => void) | null = null;
 
-  constructor(agentId: string) {
-    this.agentId = agentId;
+  /** Optional callback for when the underlying transport closes unexpectedly. */
+  public onTransportClose: ((reason?: string) => void) | null = null;
+
+  constructor(transport: AcpTransport, options?: { fsAvailable?: boolean }) {
+    this.transport = transport;
+    // Default: fs is available iff we are on desktop. Callers (e.g. remote
+    // agents that trust the host fs) can override.
+    this.fsAvailable = options?.fsAvailable ?? !isMobile();
+    this.unlistenMessage = this.transport.onMessage((msg) => this.handleMessage(msg));
+    this.unlistenClose = this.transport.onClose((reason) => {
+      // Reject all in-flight requests so callers stop hanging.
+      const err = new Error(`transport closed: ${reason ?? 'unknown reason'}`);
+      for (const reject of this.messageRejecters.values()) {
+        try {
+          reject(err);
+        } catch {
+          /* ignore */
+        }
+      }
+      this.messageResolvers.clear();
+      this.messageRejecters.clear();
+      this.pendingMethods.clear();
+      if (this.onTransportClose) {
+        this.onTransportClose(reason);
+      }
+    });
   }
 
+  /**
+   * Backwards-compatible no-op. Connection setup now happens in the factory
+   * (`createAcpClient`) before the bridge is constructed.
+   */
   async connect(): Promise<void> {
-    this.unlistenMessage = await onAgentMessage((msg) => {
-      if (msg.agent_id === this.agentId) {
-        this.handleMessage(msg.message);
-      }
-    }) as unknown as () => void;
+    // No-op: transport is already connected when handed to the bridge.
   }
 
   async disconnect(): Promise<void> {
+    // Unlisten first so the transport's close handler (which would re-reject
+    // pending requests and fire `onTransportClose`) doesn't run for a
+    // voluntary disconnect — `onTransportClose` is reserved for unexpected
+    // closes. Then explicitly reject any in-flight requests here so callers
+    // don't hang waiting for responses that will never arrive, and finally
+    // close the transport.
     if (this.unlistenMessage) {
       this.unlistenMessage();
       this.unlistenMessage = null;
     }
-    await killAgent(this.agentId);
+    if (this.unlistenClose) {
+      this.unlistenClose();
+      this.unlistenClose = null;
+    }
+    if (this.messageRejecters.size > 0) {
+      const err = new Error('transport closed: client disconnected');
+      for (const reject of this.messageRejecters.values()) {
+        try {
+          reject(err);
+        } catch {
+          /* ignore */
+        }
+      }
+      this.messageResolvers.clear();
+      this.messageRejecters.clear();
+      this.pendingMethods.clear();
+    }
+    await this.transport.close();
   }
 
   private handleMessage(message: string): void {
     try {
       const parsed = JSON.parse(message);
       const store = getTrafficStore();
-      
+
       // Handle JSON-RPC response (has id and result/error, no method)
       if ('id' in parsed && parsed.id !== undefined && !('method' in parsed)) {
         // Track incoming response
@@ -90,7 +153,7 @@ export class AcpClientBridge implements Client {
           error: !!parsed.error,
         });
         this.pendingMethods.delete(parsed.id);
-        
+
         const resolver = this.messageResolvers.get(parsed.id);
         const rejecter = this.messageRejecters.get(parsed.id);
         if (resolver && rejecter) {
@@ -104,7 +167,7 @@ export class AcpClientBridge implements Client {
           }
         }
       }
-      
+
       // Handle JSON-RPC request from agent (has id and method)
       if ('id' in parsed && parsed.id !== undefined && 'method' in parsed) {
         // Track incoming request from agent
@@ -117,7 +180,7 @@ export class AcpClientBridge implements Client {
         });
         this.handleRequest(parsed.id, parsed.method, parsed.params);
       }
-      
+
       // Handle JSON-RPC notification (no id, has method)
       if (!('id' in parsed) && parsed.method) {
         // Track incoming notification
@@ -141,16 +204,24 @@ export class AcpClientBridge implements Client {
     try {
       switch (method) {
         case 'fs/read_text_file':
-          result = await this.readTextFile(params as ReadTextFileRequest);
+          if (!this.fsAvailable) {
+            error = { code: JSONRPC_METHOD_NOT_FOUND, message: 'fs/read_text_file not available on this client' };
+          } else {
+            result = await this.readTextFile(params as ReadTextFileRequest);
+          }
           break;
         case 'fs/write_text_file':
-          result = await this.writeTextFile(params as WriteTextFileRequest);
+          if (!this.fsAvailable) {
+            error = { code: JSONRPC_METHOD_NOT_FOUND, message: 'fs/write_text_file not available on this client' };
+          } else {
+            result = await this.writeTextFile(params as WriteTextFileRequest);
+          }
           break;
         case 'session/request_permission':
           result = await this.requestPermission(params as RequestPermissionRequest);
           break;
         default:
-          error = { code: -32601, message: `Method not found: ${method}` };
+          error = { code: JSONRPC_METHOD_NOT_FOUND, message: `Method not found: ${method}` };
       }
     } catch (e) {
       error = { code: -32603, message: e instanceof Error ? e.message : String(e) };
@@ -160,7 +231,7 @@ export class AcpClientBridge implements Client {
     const response = error
       ? { jsonrpc: '2.0', id, error }
       : { jsonrpc: '2.0', id, result };
-    
+
     // Track outgoing response
     const store = getTrafficStore();
     store.addEntry({
@@ -171,8 +242,8 @@ export class AcpClientBridge implements Client {
       payload: response,
       error: !!error,
     });
-    
-    await sendToAgent(this.agentId, JSON.stringify(response));
+
+    await this.transport.send(JSON.stringify(response));
   }
 
   private handleNotification(method: string, params: unknown): void {
@@ -211,7 +282,7 @@ export class AcpClientBridge implements Client {
       });
       this.messageRejecters.set(id, reject);
 
-      sendToAgent(this.agentId, JSON.stringify(request)).catch((e) => {
+      this.transport.send(JSON.stringify(request)).catch((e) => {
         this.messageResolvers.delete(id);
         this.messageRejecters.delete(id);
         this.pendingMethods.delete(id);
@@ -236,7 +307,7 @@ export class AcpClientBridge implements Client {
       method,
       params: params || {},
     };
-    
+
     // Track outgoing notification
     const store = getTrafficStore();
     store.addEntry({
@@ -245,8 +316,8 @@ export class AcpClientBridge implements Client {
       method,
       payload: notification,
     });
-    
-    await sendToAgent(this.agentId, JSON.stringify(notification));
+
+    await this.transport.send(JSON.stringify(notification));
   }
 
   // ACP Agent methods (client calls these to talk to agent)
@@ -353,7 +424,7 @@ export class AcpClientBridge implements Client {
   ): Promise<ReadTextFileResponse> {
     try {
       let content = await tauriReadTextFile(params.path);
-      
+
       // Handle line/limit parameters if specified
       if (params.line !== undefined || params.limit !== undefined) {
         const lines = content.split('\n');
@@ -361,7 +432,7 @@ export class AcpClientBridge implements Client {
         const endLine = params.limit ? startLine + params.limit : lines.length;
         content = lines.slice(startLine, endLine).join('\n');
       }
-      
+
       console.log('readTextFile completed:', params.path);
       return { content };
     } catch (e) {
@@ -371,11 +442,25 @@ export class AcpClientBridge implements Client {
   }
 }
 
-// Factory function to create a connected ACP client
+/**
+ * Factory: connect a transport for the given agent and wrap it in an
+ * `AcpClientBridge`.
+ *
+ * For backward compatibility, the legacy single-argument form (passing an
+ * `AgentInstance` for an already-spawned stdio process) is still accepted and
+ * routes through a freshly attached `StdioTransport`.
+ */
 export async function createAcpClient(
-  agentInstance: AgentInstance
+  arg: AgentInstance | { name: string; config: AgentConfig },
+  options?: { fsAvailable?: boolean }
 ): Promise<AcpClientBridge> {
-  const client = new AcpClientBridge(agentInstance.id);
-  await client.connect();
-  return client;
+  if ('config' in arg) {
+    const transport = await createTransport(arg.name, arg.config);
+    return new AcpClientBridge(transport, options);
+  }
+  // Legacy path: caller already invoked spawnAgent and just wants us to wire
+  // up the events.
+  const transport = new StdioTransport(arg);
+  await transport.attach();
+  return new AcpClientBridge(transport, options);
 }

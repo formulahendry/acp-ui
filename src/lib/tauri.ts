@@ -31,13 +31,29 @@ export async function listRunningAgents(): Promise<string[]> {
   return invoke<string[]>('list_running_agents');
 }
 
+/** Optional fields used when adding/updating a remote (websocket / http) agent. */
+export interface RemoteAgentOptions {
+  transport?: 'websocket' | 'http';
+  url?: string;
+  headers?: Record<string, string>;
+}
+
 export async function addAgent(
   name: string,
-  command: string,
+  command: string | null,
   args: string[],
-  env: Record<string, string> = {}
+  env: Record<string, string> = {},
+  remote: RemoteAgentOptions = {}
 ): Promise<AgentsConfig> {
-  return invoke<AgentsConfig>('add_agent', { name, command, args, env });
+  return invoke<AgentsConfig>('add_agent', {
+    name,
+    command,
+    args,
+    env,
+    transport: remote.transport,
+    url: remote.url,
+    headers: remote.headers,
+  });
 }
 
 export async function removeAgent(name: string): Promise<AgentsConfig> {
@@ -46,11 +62,20 @@ export async function removeAgent(name: string): Promise<AgentsConfig> {
 
 export async function updateAgent(
   name: string,
-  command: string,
+  command: string | null,
   args: string[],
-  env: Record<string, string> = {}
+  env: Record<string, string> = {},
+  remote: RemoteAgentOptions = {}
 ): Promise<AgentsConfig> {
-  return invoke<AgentsConfig>('update_agent', { name, command, args, env });
+  return invoke<AgentsConfig>('update_agent', {
+    name,
+    command,
+    args,
+    env,
+    transport: remote.transport,
+    url: remote.url,
+    headers: remote.headers,
+  });
 }
 
 // Event listeners
