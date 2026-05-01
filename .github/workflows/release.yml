@@ -159,14 +159,109 @@ jobs:
             - **macOS**: `.dmg` (Intel or Apple Silicon)
             - **Linux x64**: `.deb`, `.rpm`, or `.AppImage`
             - **Linux ARM64**: `.deb`, `.rpm`, or `.AppImage`
+            - **Android**: `.apk` (sideload via "Install unknown apps")
           releaseDraft: true
           prerelease: ${{ github.event_name == 'workflow_dispatch' && inputs.prerelease || false }}
           args: ${{ matrix.args }}
 
-  # Publish the release after all builds complete
-  publish:
+  # Build the Android APK and upload it to the same draft release.
+  # Runs after the desktop matrix so the release already exists when we
+  # call `gh release upload`. The Android project (src-tauri/gen/android/)
+  # is gitignored, so we (re-)initialise it on every run and re-apply the
+  # AndroidManifest cleartext-traffic patch needed for ws:// LAN agents.
+  build-android:
     needs: [build, update-version, get-version]
     if: always() && needs.build.result == 'success'
+    permissions:
+      contents: write
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('v{0}', inputs.version) || github.ref }}
+
+      - name: Resolve version
+        id: version
+        run: |
+          VERSION="${{ needs.update-version.outputs.version || needs.get-version.outputs.version || inputs.version }}"
+          if [ -z "$VERSION" ]; then VERSION="${GITHUB_REF#refs/tags/v}"; fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: 'npm'
+
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: 'platforms;android-34 build-tools;34.0.0 ndk;26.1.10909125'
+
+      - name: Set NDK_HOME
+        run: echo "NDK_HOME=$ANDROID_HOME/ndk/26.1.10909125" >> $GITHUB_ENV
+
+      - name: Install Rust stable with Android targets
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+
+      - name: Rust cache (Android)
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+          key: 'android'
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Initialise Android project
+        run: |
+          # `src-tauri/gen/android/` is gitignored; init regenerates it.
+          npm run tauri android init
+
+      - name: Allow cleartext traffic for ws:// LAN agents
+        run: |
+          # The init template wires the `usesCleartextTraffic` manifest
+          # placeholder via Gradle. Force it to `true` directly in the
+          # manifest so plain ws:// agents on local networks work without
+          # users having to fiddle with build flags.
+          MANIFEST=src-tauri/gen/android/app/src/main/AndroidManifest.xml
+          sed -i 's|android:usesCleartextTraffic="\${usesCleartextTraffic}"|android:usesCleartextTraffic="true"|' "$MANIFEST"
+          grep -q 'android:usesCleartextTraffic="true"' "$MANIFEST"
+
+      - name: Build APK (debug-signed, sideloadable)
+        # Debug builds are signed with the Android debug keystore so they
+        # install without a release-keystore setup. Sufficient for sideload
+        # distribution; Play Store would require a release keystore.
+        run: npm run tauri android build -- --debug --apk
+
+      - name: Stage APK with versioned name
+        id: apk
+        run: |
+          SRC=src-tauri/gen/android/app/build/outputs/apk/universal/debug/app-universal-debug.apk
+          DEST="acp-ui_${{ steps.version.outputs.version }}_android.apk"
+          cp "$SRC" "$DEST"
+          echo "path=$DEST" >> $GITHUB_OUTPUT
+
+      - name: Upload APK to draft release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "v${{ steps.version.outputs.version }}" \
+            "${{ steps.apk.outputs.path }}" --clobber
+
+  # Publish the release after all builds complete
+  publish:
+    needs: [build, build-android, update-version, get-version]
+    if: always() && needs.build.result == 'success' && needs.build-android.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: write
