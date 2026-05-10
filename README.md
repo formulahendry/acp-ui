@@ -4,7 +4,7 @@
 	<img src="https://get.microsoft.com/images/en-us%20dark.svg" width="200"/>
 </a>
 
-A modern, cross-platform client for the [Agent Client Protocol (ACP)](https://agentclientprotocol.com/) on desktop, mobile, and the web. Connect to AI coding agents like GitHub Copilot, Claude Code, Gemini CLI, Qwen Code, Codex CLI, OpenCode, OpenClaw, and any ACP-compatible agent from a unified interface.
+A modern, cross-platform client for the [Agent Client Protocol (ACP)](https://agentclientprotocol.com/) on desktop, mobile, and the web. Connect to AI coding agents like GitHub Copilot, Claude Code, Gemini CLI, Qwen Code, Codex CLI, OpenCode, OpenClaw, Kiro CLI, Hermes Agent, and any ACP-compatible agent from a unified interface.
 
 ![ACP UI Screenshot](assets/screenshot.png)
 
@@ -66,6 +66,8 @@ ACP UI comes pre-configured with these agents:
 | [Codex CLI](https://github.com/zed-industries/codex-acp) | `@zed-industries/codex-acp` |
 | [OpenCode](https://github.com/opencode-ai/opencode) | `opencode-ai` |
 | [OpenClaw](https://github.com/nicobailon/openclaw) | `openclaw` |
+| [Kiro CLI](https://github.com/aws/kiro) | `kiro-cli` |
+| [Hermes Agent](https://github.com/nichochar/hermes) | `hermes` |
 
 ## 🛠️ Configuration
 
@@ -134,6 +136,16 @@ Agent configurations are stored in:
     "OpenClaw": {
       "command": "npx",
       "args": ["openclaw", "acp"],
+      "env": {}
+    },
+    "Kiro CLI": {
+      "command": "kiro-cli",
+      "args": ["acp"],
+      "env": {}
+    },
+    "Hermes Agent": {
+      "command": "hermes",
+      "args": ["acp"],
       "env": {}
     }
   }
