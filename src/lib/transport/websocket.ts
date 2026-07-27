@@ -104,7 +104,7 @@ export class WebSocketTransport implements AcpTransport {
     }
 
     const subprotocols = buildSubprotocols(opts.headers);
-    const ws = new Ctor(opts.url, subprotocols);
+    const ws = subprotocols.length > 0 ? new Ctor(opts.url, subprotocols) : new Ctor(opts.url);
     const timeoutMs = opts.connectTimeoutMs ?? 15000;
 
     await new Promise<void>((resolve, reject) => {
@@ -277,10 +277,11 @@ export class WebSocketTransport implements AcpTransport {
 export function buildSubprotocols(
   headers?: Record<string, string>
 ): string[] {
-  const protocols: string[] = [ACP_SUBPROTOCOL];
-  if (!headers) return protocols;
+  if (!headers) return [];
   const auth = pickHeader(headers, 'authorization');
-  if (auth) {
+  if (!auth) return [];
+  const protocols: string[] = [ACP_SUBPROTOCOL];
+  {
     const m = /^Bearer\s+(.+)$/i.exec(auth.trim());
     if (m) {
       // Subprotocol tokens cannot contain whitespace; the bearer token in
