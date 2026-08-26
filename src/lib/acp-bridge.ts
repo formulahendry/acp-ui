@@ -22,11 +22,20 @@ import type {
   CancelNotification,
   AuthenticateRequest,
   AuthenticateResponse,
+  CreateElicitationRequest,
+  CreateElicitationResponse,
+  CompleteElicitationNotification,
 } from '@agentclientprotocol/sdk';
 import { readTextFile as hostReadTextFile, writeTextFile as hostWriteTextFile } from './host';
 import type { AcpTransport, Unsubscribe } from './transport/types';
 import { createTransport } from './transport';
-import type { AgentConfig, AgentInstance, PermissionRequest as LocalPermissionRequest } from './types';
+import type {
+  AgentConfig,
+  AgentInstance,
+  PermissionRequest as LocalPermissionRequest,
+  ElicitationRequest as LocalElicitationRequest,
+  ElicitationAction,
+} from './types';
 import { hasLocalFs } from './platform';
 import { ref, type Ref } from 'vue';
 import { useTrafficStore } from '../stores/traffic';
@@ -65,6 +74,13 @@ export class AcpClientBridge implements Client {
   // Permission request handling
   public pendingPermissionRequest: Ref<LocalPermissionRequest | null> = ref(null);
   private permissionResolver: PermissionResolver | null = null;
+
+  // Elicitation (URL mode) request handling. `elicitationResolver` resolves
+  // the outstanding `elicitation/create` request; it is answered either by the
+  // user (accept/decline/cancel) or automatically when the agent sends
+  // `elicitation/complete` for the same id.
+  public pendingElicitation: Ref<LocalElicitationRequest | null> = ref(null);
+  private elicitationResolver: ((response: CreateElicitationResponse) => void) | null = null;
 
   // Session update callback
   public onSessionUpdate: ((notification: SessionNotification) => void) | null = null;
@@ -220,6 +236,9 @@ export class AcpClientBridge implements Client {
         case 'session/request_permission':
           result = await this.requestPermission(params as RequestPermissionRequest);
           break;
+        case 'elicitation/create':
+          result = await this.createElicitation(params as CreateElicitationRequest);
+          break;
         default:
           error = { code: JSONRPC_METHOD_NOT_FOUND, message: `Method not found: ${method}` };
       }
@@ -251,6 +270,8 @@ export class AcpClientBridge implements Client {
       if (this.onSessionUpdate) {
         this.onSessionUpdate(params as SessionNotification);
       }
+    } else if (method === 'elicitation/complete') {
+      this.completeElicitation(params as CompleteElicitationNotification);
     }
   }
 
@@ -345,8 +366,17 @@ export class AcpClientBridge implements Client {
     await this.sendRequest('session/set_mode', params);
   }
 
-  async unstable_setSessionModel(params: { sessionId: string; modelId: string }): Promise<void> {
-    await this.sendRequest('session/set_model', params);
+  /**
+   * Set a session config option (SDK 1.3.0). The model picker rides on this:
+   * the model is a `select` config option, changed via `session/set_config_option`.
+   * `unstable_` because the config-options API is not part of the stable spec.
+   */
+  async unstable_setSessionConfigOption(params: {
+    sessionId: string;
+    configId: string;
+    value: string | boolean;
+  }): Promise<void> {
+    await this.sendRequest('session/set_config_option', params);
   }
 
   async authenticate(params: AuthenticateRequest): Promise<AuthenticateResponse> {
@@ -399,6 +429,59 @@ export class AcpClientBridge implements Client {
       });
       this.permissionResolver = null;
       this.pendingPermissionRequest.value = null;
+    }
+  }
+
+  /**
+   * Handle a server→client `elicitation/create`. Only URL mode is supported
+   * (we advertise `clientCapabilities.elicitation.url`); any other mode is
+   * declined so the agent gets a prompt answer instead of hanging. For URL
+   * mode we surface a dialog and leave the request pending until the user
+   * acts or the agent sends `elicitation/complete`.
+   */
+  async createElicitation(
+    params: CreateElicitationRequest
+  ): Promise<CreateElicitationResponse> {
+    if (params.mode !== 'url') {
+      return { action: 'decline' };
+    }
+    // Defensive field access: `params` is a discriminated union and we handle
+    // the wire type directly rather than importing the SDK's runtime guards.
+    const url = (params as { url?: unknown }).url;
+    const elicitationId = (params as { elicitationId?: unknown }).elicitationId;
+    if (typeof url !== 'string' || typeof elicitationId !== 'string') {
+      return { action: 'decline' };
+    }
+
+    return new Promise((resolve) => {
+      this.pendingElicitation.value = {
+        elicitationId,
+        message: params.message,
+        url,
+      };
+      this.elicitationResolver = resolve;
+    });
+  }
+
+  /** Answer the outstanding elicitation with the user's chosen action. */
+  resolveElicitation(action: ElicitationAction): void {
+    if (this.elicitationResolver) {
+      this.elicitationResolver({ action } as CreateElicitationResponse);
+      this.elicitationResolver = null;
+      this.pendingElicitation.value = null;
+    }
+  }
+
+  /**
+   * Handle a server→client `elicitation/complete`: the agent detected that the
+   * URL flow finished (e.g. the user authorized the tool in their browser). If
+   * it matches the outstanding elicitation, auto-accept so the turn continues
+   * without the user having to click, and dismiss the dialog.
+   */
+  private completeElicitation(params: CompleteElicitationNotification): void {
+    const pending = this.pendingElicitation.value;
+    if (pending && pending.elicitationId === params.elicitationId) {
+      this.resolveElicitation('accept');
     }
   }
 
