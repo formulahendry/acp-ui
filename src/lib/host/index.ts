@@ -287,6 +287,24 @@ export async function getAppVersion(): Promise<string> {
   return v ?? FALLBACK_VERSION;
 }
 
+/**
+ * Open a URL in the user's default external browser.
+ *
+ * In a Tauri webview `window.open()` / `<a target="_blank">` do NOT reach the
+ * system browser (they no-op or try to navigate the webview), so we go through
+ * the opener plugin. On the plain web build we fall back to `window.open`,
+ * which runs synchronously here to stay inside the click's user-gesture and
+ * avoid popup blocking.
+ */
+export async function openExternalUrl(url: string): Promise<void> {
+  if (isTauriHost()) {
+    const { openUrl } = await import('@tauri-apps/plugin-opener');
+    await openUrl(url);
+    return;
+  }
+  window.open(url, '_blank', 'noopener,noreferrer');
+}
+
 /** True when the host can present a native folder picker. */
 export function canPickFolder(): boolean {
   return isDesktop();
