@@ -18,7 +18,13 @@ const configStore = useConfigStore();
 const sessionStore = useSessionStore();
 
 const selectedAgent = ref('');
-const selectedCwd = ref('');
+// Default working directory used when the user hasn't picked/typed one. The
+// cwd is interpreted on the *agent's* host, so a POSIX temp dir is a safe
+// default for remote agents and avoids an unnecessary "enter a working
+// directory" error on the New Session flow. Desktop users normally override
+// it with the folder picker.
+const DEFAULT_CWD = '/tmp';
+const selectedCwd = ref(DEFAULT_CWD);
 // On mobile / web there is no native folder picker (and the cwd refers to
 // a path on the *agent's* machine, not the local device), so we expose a
 // free-text field instead of the picker button.
@@ -127,6 +133,7 @@ onMounted(async () => {
   if (savedCwd) {
     selectedCwd.value = savedCwd;
   }
+  // else: keep the DEFAULT_CWD prefilled above.
 
   // Hook foreground-reconnect listeners. `pageshow` fires both on initial
   // navigation and when iOS restores a frozen WebView from the back/forward
@@ -173,11 +180,9 @@ async function handleNewSession() {
   // most agents. On desktop the folder picker always returns an absolute
   // path, but on mobile the user types it, so validate up-front and surface
   // a helpful error rather than letting the agent reject `session/new`.
-  const cwd = selectedCwd.value.trim();
-  if (!cwd) {
-    sessionStore.error = 'Please enter a working directory (absolute path on the agent\u2019s machine).';
-    return;
-  }
+  // Fall back to DEFAULT_CWD when the field is empty so remote agents don't
+  // trip an avoidable "enter a working directory" error.
+  const cwd = selectedCwd.value.trim() || DEFAULT_CWD;
   const isAbsolute = cwd.startsWith('/') || /^[A-Za-z]:[\\/]/.test(cwd);
   if (!isAbsolute) {
     sessionStore.error = `Working directory must be an absolute path (got: ${cwd}).`;
