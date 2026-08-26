@@ -22,11 +22,38 @@ import type {
   CancelNotification,
   AuthenticateRequest,
   AuthenticateResponse,
+  CreateElicitationRequest,
+  CreateElicitationResponse,
+  CompleteElicitationNotification,
+  CreateTerminalRequest,
+  CreateTerminalResponse,
+  TerminalOutputRequest,
+  TerminalOutputResponse,
+  WaitForTerminalExitRequest,
+  WaitForTerminalExitResponse,
+  KillTerminalRequest,
+  KillTerminalResponse,
+  ReleaseTerminalRequest,
+  ReleaseTerminalResponse,
 } from '@agentclientprotocol/sdk';
-import { readTextFile as hostReadTextFile, writeTextFile as hostWriteTextFile } from './host';
+import {
+  readTextFile as hostReadTextFile,
+  writeTextFile as hostWriteTextFile,
+  terminalCreate,
+  terminalOutput,
+  terminalWaitForExit,
+  terminalKill,
+  terminalRelease,
+} from './host';
 import type { AcpTransport, Unsubscribe } from './transport/types';
 import { createTransport } from './transport';
-import type { AgentConfig, AgentInstance, PermissionRequest as LocalPermissionRequest } from './types';
+import type {
+  AgentConfig,
+  AgentInstance,
+  PermissionRequest as LocalPermissionRequest,
+  ElicitationRequest as LocalElicitationRequest,
+  ElicitationAction,
+} from './types';
 import { hasLocalFs } from './platform';
 import { ref, type Ref } from 'vue';
 import { useTrafficStore } from '../stores/traffic';
@@ -55,6 +82,9 @@ export class AcpClientBridge implements Client {
    * error so a misbehaving agent can't hang waiting for a response.
    */
   private fsAvailable: boolean;
+  /** Terminal RPCs (`terminal/*`) require a desktop subprocess, so they are
+   * only handled on Tauri desktop; elsewhere they respond method-not-found. */
+  private terminalAvailable: boolean;
   private messageResolvers: Map<number, (response: unknown) => void> = new Map();
   private messageRejecters: Map<number, (error: Error) => void> = new Map();
   private pendingMethods: Map<number, string> = new Map(); // Track method names for responses
@@ -65,6 +95,13 @@ export class AcpClientBridge implements Client {
   // Permission request handling
   public pendingPermissionRequest: Ref<LocalPermissionRequest | null> = ref(null);
   private permissionResolver: PermissionResolver | null = null;
+
+  // Elicitation (URL mode) request handling. `elicitationResolver` resolves
+  // the outstanding `elicitation/create` request; it is answered either by the
+  // user (accept/decline/cancel) or automatically when the agent sends
+  // `elicitation/complete` for the same id.
+  public pendingElicitation: Ref<LocalElicitationRequest | null> = ref(null);
+  private elicitationResolver: ((response: CreateElicitationResponse) => void) | null = null;
 
   // Session update callback
   public onSessionUpdate: ((notification: SessionNotification) => void) | null = null;
@@ -77,6 +114,7 @@ export class AcpClientBridge implements Client {
     // Default: fs is available iff we are on Tauri desktop. Callers (e.g.
     // remote agents that trust the host fs) can override.
     this.fsAvailable = options?.fsAvailable ?? hasLocalFs();
+    this.terminalAvailable = hasLocalFs();
     this.unlistenMessage = this.transport.onMessage((msg) => this.handleMessage(msg));
     this.unlistenClose = this.transport.onClose((reason) => {
       // Reject all in-flight requests so callers stop hanging.
@@ -220,6 +258,20 @@ export class AcpClientBridge implements Client {
         case 'session/request_permission':
           result = await this.requestPermission(params as RequestPermissionRequest);
           break;
+        case 'elicitation/create':
+          result = await this.createElicitation(params as CreateElicitationRequest);
+          break;
+        case 'terminal/create':
+        case 'terminal/output':
+        case 'terminal/wait_for_exit':
+        case 'terminal/kill':
+        case 'terminal/release':
+          if (!this.terminalAvailable) {
+            error = { code: JSONRPC_METHOD_NOT_FOUND, message: `${method} not available on this client` };
+          } else {
+            result = await this.handleTerminal(method, params);
+          }
+          break;
         default:
           error = { code: JSONRPC_METHOD_NOT_FOUND, message: `Method not found: ${method}` };
       }
@@ -251,6 +303,8 @@ export class AcpClientBridge implements Client {
       if (this.onSessionUpdate) {
         this.onSessionUpdate(params as SessionNotification);
       }
+    } else if (method === 'elicitation/complete') {
+      this.completeElicitation(params as CompleteElicitationNotification);
     }
   }
 
@@ -345,8 +399,17 @@ export class AcpClientBridge implements Client {
     await this.sendRequest('session/set_mode', params);
   }
 
-  async unstable_setSessionModel(params: { sessionId: string; modelId: string }): Promise<void> {
-    await this.sendRequest('session/set_model', params);
+  /**
+   * Set a session config option (SDK 1.3.0). The model picker rides on this:
+   * the model is a `select` config option, changed via `session/set_config_option`.
+   * `unstable_` because the config-options API is not part of the stable spec.
+   */
+  async unstable_setSessionConfigOption(params: {
+    sessionId: string;
+    configId: string;
+    value: string | boolean;
+  }): Promise<void> {
+    await this.sendRequest('session/set_config_option', params);
   }
 
   async authenticate(params: AuthenticateRequest): Promise<AuthenticateResponse> {
@@ -399,6 +462,109 @@ export class AcpClientBridge implements Client {
       });
       this.permissionResolver = null;
       this.pendingPermissionRequest.value = null;
+    }
+  }
+
+  /**
+   * Handle a server→client `elicitation/create`. Only URL mode is supported
+   * (we advertise `clientCapabilities.elicitation.url`); any other mode is
+   * declined so the agent gets a prompt answer instead of hanging. For URL
+   * mode we surface a dialog and leave the request pending until the user
+   * acts or the agent sends `elicitation/complete`.
+   */
+  async createElicitation(
+    params: CreateElicitationRequest
+  ): Promise<CreateElicitationResponse> {
+    if (params.mode !== 'url') {
+      return { action: 'decline' };
+    }
+    // Defensive field access: `params` is a discriminated union and we handle
+    // the wire type directly rather than importing the SDK's runtime guards.
+    const url = (params as { url?: unknown }).url;
+    const elicitationId = (params as { elicitationId?: unknown }).elicitationId;
+    if (typeof url !== 'string' || typeof elicitationId !== 'string') {
+      return { action: 'decline' };
+    }
+
+    return new Promise((resolve) => {
+      this.pendingElicitation.value = {
+        elicitationId,
+        message: params.message,
+        url,
+      };
+      this.elicitationResolver = resolve;
+    });
+  }
+
+  /** Answer the outstanding elicitation with the user's chosen action. */
+  resolveElicitation(action: ElicitationAction): void {
+    if (this.elicitationResolver) {
+      this.elicitationResolver({ action } as CreateElicitationResponse);
+      this.elicitationResolver = null;
+      this.pendingElicitation.value = null;
+    }
+  }
+
+  /**
+   * Handle a server→client `elicitation/complete`: the agent detected that the
+   * URL flow finished (e.g. the user authorized the tool in their browser). If
+   * it matches the outstanding elicitation, auto-accept so the turn continues
+   * without the user having to click, and dismiss the dialog.
+   */
+  private completeElicitation(params: CompleteElicitationNotification): void {
+    const pending = this.pendingElicitation.value;
+    if (pending && pending.elicitationId === params.elicitationId) {
+      this.resolveElicitation('accept');
+    }
+  }
+
+  /**
+   * Handle the ACP `terminal/*` RPCs by delegating to the Tauri backend
+   * (desktop only; the caller has already checked `terminalAvailable`). The
+   * agent uses these to run commands on the user's machine and read output.
+   */
+  private async handleTerminal(method: string, params: unknown): Promise<unknown> {
+    switch (method) {
+      case 'terminal/create': {
+        const p = params as CreateTerminalRequest;
+        const terminalId = await terminalCreate({
+          command: p.command,
+          args: p.args ?? [],
+          env: (p.env ?? []).map((e) => ({ name: e.name, value: e.value })),
+          cwd: p.cwd ?? null,
+          outputByteLimit: (p as { outputByteLimit?: number | null }).outputByteLimit ?? null,
+        });
+        return { terminalId } as CreateTerminalResponse;
+      }
+      case 'terminal/output': {
+        const p = params as TerminalOutputRequest;
+        const res = await terminalOutput(p.terminalId);
+        return {
+          output: res.output,
+          truncated: res.truncated,
+          exitStatus: res.exitStatus ?? undefined,
+        } as TerminalOutputResponse;
+      }
+      case 'terminal/wait_for_exit': {
+        const p = params as WaitForTerminalExitRequest;
+        const status = await terminalWaitForExit(p.terminalId);
+        return {
+          exitCode: status.exitCode ?? undefined,
+          signal: status.signal ?? undefined,
+        } as WaitForTerminalExitResponse;
+      }
+      case 'terminal/kill': {
+        const p = params as KillTerminalRequest;
+        await terminalKill(p.terminalId);
+        return {} as KillTerminalResponse;
+      }
+      case 'terminal/release': {
+        const p = params as ReleaseTerminalRequest;
+        await terminalRelease(p.terminalId);
+        return {} as ReleaseTerminalResponse;
+      }
+      default:
+        throw new Error(`Unhandled terminal method: ${method}`);
     }
   }
 

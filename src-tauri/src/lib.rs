@@ -1,8 +1,10 @@
 mod agent;
 mod config;
+mod terminal;
 
 use agent::{AgentInstance, AgentManager};
 use config::{AgentConfig, AgentTransport, AgentsConfig, ConfigManager};
+use terminal::{EnvVar, TerminalExitStatus, TerminalManager, TerminalOutput};
 use parking_lot::RwLock;
 use std::sync::Arc;
 use tauri::{AppHandle, Manager, State};
@@ -10,6 +12,7 @@ use tauri::{AppHandle, Manager, State};
 struct AppState {
     config_manager: Arc<RwLock<Option<ConfigManager>>>,
     agent_manager: AgentManager,
+    terminal_manager: TerminalManager,
 }
 
 #[tauri::command]
@@ -200,6 +203,47 @@ fn build_agent_config(
 }
 
 #[tauri::command]
+fn terminal_create(
+    command: String,
+    args: Option<Vec<String>>,
+    env: Option<Vec<EnvVar>>,
+    cwd: Option<String>,
+    output_byte_limit: Option<usize>,
+    state: State<AppState>,
+) -> Result<String, String> {
+    state.terminal_manager.create(
+        command,
+        args.unwrap_or_default(),
+        env.unwrap_or_default(),
+        cwd,
+        output_byte_limit,
+    )
+}
+
+#[tauri::command]
+fn terminal_output(terminal_id: String, state: State<AppState>) -> Result<TerminalOutput, String> {
+    state.terminal_manager.output(&terminal_id)
+}
+
+#[tauri::command]
+fn terminal_wait_for_exit(
+    terminal_id: String,
+    state: State<AppState>,
+) -> Result<TerminalExitStatus, String> {
+    state.terminal_manager.wait_for_exit(&terminal_id)
+}
+
+#[tauri::command]
+fn terminal_kill(terminal_id: String, state: State<AppState>) -> Result<(), String> {
+    state.terminal_manager.kill(&terminal_id)
+}
+
+#[tauri::command]
+fn terminal_release(terminal_id: String, state: State<AppState>) -> Result<(), String> {
+    state.terminal_manager.release(&terminal_id)
+}
+
+#[tauri::command]
 fn get_machine_id() -> Result<String, String> {
     // `machine-uid` is desktop-only (no support for iOS / Android). Telemetry
     // on mobile falls back to an anonymous id (the frontend handles a failure
@@ -219,6 +263,7 @@ pub fn run() {
     let app_state = AppState {
         config_manager: Arc::new(RwLock::new(None)),
         agent_manager: AgentManager::new(),
+        terminal_manager: TerminalManager::new(),
     };
 
     tauri::Builder::default()
@@ -254,6 +299,11 @@ pub fn run() {
             add_agent,
             remove_agent,
             update_agent,
+            terminal_create,
+            terminal_output,
+            terminal_wait_for_exit,
+            terminal_kill,
+            terminal_release,
             get_machine_id
         ])
         .run(tauri::generate_context!())

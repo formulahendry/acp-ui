@@ -10,6 +10,7 @@ import ChatView from './components/ChatView.vue';
 import PermissionDialog from './components/PermissionDialog.vue';
 import SettingsView from './components/SettingsView.vue';
 import AuthMethodDialog from './components/AuthMethodDialog.vue';
+import ElicitationDialog from './components/ElicitationDialog.vue';
 import TrafficMonitor from './components/TrafficMonitor.vue';
 import StartupProgress from './components/StartupProgress.vue';
 import type { SavedSession } from './lib/types';
@@ -95,6 +96,9 @@ async function handleManualReconnect() {
 
 // Watch for permission requests from session store
 const pendingPermission = computed(() => sessionStore.pendingPermission);
+
+// Watch for URL-mode elicitation requests (tool authorization)
+const pendingElicitation = computed(() => sessionStore.pendingElicitation);
 
 // Watch for auth method selection requests
 const pendingAuthMethods = computed(() => sessionStore.pendingAuthMethods);
@@ -226,6 +230,10 @@ function handleAuthMethodSelect(methodId: string) {
 
 function handleAuthMethodCancel() {
   sessionStore.cancelAuthSelection();
+}
+
+function handleElicitationRespond(action: 'accept' | 'decline' | 'cancel') {
+  sessionStore.resolveElicitation(action);
 }
 
 function toggleSidebar() {
@@ -446,12 +454,19 @@ function clearError() {
     />
 
     <!-- Auth Method Dialog -->
-    <AuthMethodDialog 
+    <AuthMethodDialog
       v-if="pendingAuthMethods.length > 0"
       :auth-methods="pendingAuthMethods"
       :agent-name="pendingAuthAgentName"
       @select="handleAuthMethodSelect"
       @cancel="handleAuthMethodCancel"
+    />
+
+    <!-- Elicitation Dialog (URL-mode tool authorization) -->
+    <ElicitationDialog
+      v-if="pendingElicitation"
+      :elicitation="pendingElicitation"
+      @respond="handleElicitationRespond"
     />
 
     <!-- Settings -->

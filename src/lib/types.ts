@@ -108,6 +108,19 @@ export interface PermissionOption {
   optionId: string;
 }
 
+// Elicitation (URL mode) — a server→client request asking the user to visit
+// an authorization URL (e.g. a 3LO tool grant on a GlobAI agent) so a tool
+// can proceed. Mirrors the SDK's URL-mode `CreateElicitationRequest`, reduced
+// to what the dialog needs.
+export interface ElicitationRequest {
+  elicitationId: string;
+  message: string;
+  url: string;
+}
+
+/** User's response to a URL-mode elicitation. */
+export type ElicitationAction = 'accept' | 'decline' | 'cancel';
+
 // Session Modes
 export interface SessionMode {
   id: string;
