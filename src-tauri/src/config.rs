@@ -188,6 +188,14 @@ impl Default for AgentsConfig {
                 std::collections::HashMap::new(),
             ),
         );
+        agents.insert(
+            "MiniMax Code".to_string(),
+            AgentConfig::stdio(
+                "mcode".to_string(),
+                vec!["acp".to_string()],
+                std::collections::HashMap::new(),
+            ),
+        );
         AgentsConfig { agents }
     }
 }
@@ -401,9 +409,9 @@ mod tests {
     }
 
     #[test]
-    fn defaults_keep_all_eleven_stdio_agents() {
+    fn defaults_keep_all_twelve_stdio_agents() {
         let cfg = AgentsConfig::default();
-        assert_eq!(cfg.agents.len(), 11);
+        assert_eq!(cfg.agents.len(), 12);
         for (_, a) in &cfg.agents {
             assert_eq!(a.transport, AgentTransport::Stdio);
             assert!(a.command.is_some());
