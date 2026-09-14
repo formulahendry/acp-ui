@@ -81,6 +81,9 @@ ACP UI comes pre-configured with these agents:
 | [OpenClaw](https://github.com/nicobailon/openclaw) | `openclaw` |
 | [Kiro CLI](https://github.com/aws/kiro) | `kiro-cli` |
 | [Hermes Agent](https://github.com/nichochar/hermes) | `hermes` |
+| [MiniMax Code](https://agent.minimax.io) | `@minimax-ai/code` |
+
+> **MiniMax Code (desktop)**: Follow the [CLI installation instructions](https://www.npmjs.com/package/@minimax-ai/code), including its Node.js requirements, and run `mcode login` in a terminal. Ensure `mcode` is on your `PATH`; the preset runs `mcode acp`.
 
 ## 🛠️ Configuration
 
@@ -158,6 +161,11 @@ Agent configurations are stored in:
     },
     "Hermes Agent": {
       "command": "hermes",
+      "args": ["acp"],
+      "env": {}
+    },
+    "MiniMax Code": {
+      "command": "mcode",
       "args": ["acp"],
       "env": {}
     }
