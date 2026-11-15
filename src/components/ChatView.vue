@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, nextTick, watch } from 'vue';
+import { ref, computed, nextTick, onMounted, watch } from 'vue';
 import { marked } from 'marked';
 import { useSessionStore } from '../stores/session';
 import { isMobile } from '../lib/platform';
@@ -11,6 +11,8 @@ import type { SlashCommand } from '../lib/types';
 const sessionStore = useSessionStore();
 const inputText = ref('');
 const messagesContainer = ref<HTMLElement | null>(null);
+const followsLatest = ref(true);
+const hasUnreadUpdates = ref(false);
 const commandPaletteRef = ref<InstanceType<typeof CommandPalette> | null>(null);
 
 // On mobile (iOS/Android) the soft-keyboard's Return key should insert a
@@ -47,13 +49,27 @@ const commandFilter = computed(() => {
   return inputText.value.slice(1); // Remove the leading "/"
 });
 
-// Auto-scroll to bottom when new messages arrive
-watch(messages, async () => {
-  await nextTick();
-  if (messagesContainer.value) {
-    messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight;
-  }
-}, { deep: true });
+function updateScrollPosition() {
+  const container = messagesContainer.value;
+  if (!container) return;
+  followsLatest.value = container.scrollHeight - container.scrollTop - container.clientHeight <= 48;
+  if (followsLatest.value) hasUnreadUpdates.value = false;
+}
+
+function jumpToLatest() {
+  const container = messagesContainer.value;
+  if (!container) return;
+  container.scrollTop = container.scrollHeight;
+  followsLatest.value = true;
+  hasUnreadUpdates.value = false;
+}
+
+onMounted(jumpToLatest);
+watch(() => currentSession.value?.id, () => nextTick(jumpToLatest));
+watch(messages, () => {
+  if (followsLatest.value) jumpToLatest();
+  else hasUnreadUpdates.value = true;
+}, { deep: true, flush: 'post' });
 
 async function handleSend() {
   const text = inputText.value.trim();
@@ -182,7 +198,7 @@ function getStatusIcon(status: string): string {
       </div>
     </div>
     
-    <div ref="messagesContainer" class="messages-container">
+    <div ref="messagesContainer" class="messages-container" @scroll.passive="updateScrollPosition">
       <div 
         v-for="message in messages" 
         :key="message.id"
@@ -237,6 +253,11 @@ function getStatusIcon(status: string): string {
       </div>
     </div>
     
+    <div v-if="!followsLatest" class="scroll-controls">
+      <button type="button" class="jump-to-latest" @click="jumpToLatest">
+        {{ hasUnreadUpdates ? 'New updates · Jump to latest' : 'Jump to latest' }}
+      </button>
+    </div>
     <div class="input-container">
       <CommandPalette
         ref="commandPaletteRef"
@@ -309,6 +330,27 @@ function getStatusIcon(status: string): string {
   flex: 1;
   overflow-y: auto;
   padding: 1rem;
+}
+
+.scroll-controls {
+  position: relative;
+  flex: 0 0 0;
+  align-self: center;
+  z-index: 1;
+}
+
+.jump-to-latest {
+  position: absolute;
+  bottom: 0.75rem;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0.375rem 0.75rem;
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 999px;
+  background: var(--bg-assistant, #f5f5f5);
+  color: inherit;
+  cursor: pointer;
+  white-space: nowrap;
 }
 
 .message {
