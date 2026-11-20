@@ -51,7 +51,7 @@ async function handleSync() {
     
     <div v-if="sessions.length === 0" class="empty-state">
       <p>No saved sessions yet.</p>
-      <p class="hint">Create a new session to get started.</p>
+      <p class="hint">Create a new session or press Sync to import sessions from your agents.</p>
     </div>
     
     <ul v-else>
@@ -62,7 +62,8 @@ async function handleSync() {
         @click="handleResume(session)"
       >
         <div class="session-info">
-          <span class="session-title">{{ session.title }}</span>
+          <span class="session-title" :title="session.title">{{ session.title }}</span>
+          <span class="session-cwd" :title="session.cwd">{{ session.cwd }}</span>
           <span class="session-agent">{{ session.agentName }}</span>
           <span class="session-date">{{ formatDate(session.lastUpdated) }}</span>
         </div>
@@ -161,6 +162,14 @@ ul {
 
 .session-title {
   font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.session-cwd {
+  font-size: 0.75rem;
+  color: var(--text-muted, #999);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
