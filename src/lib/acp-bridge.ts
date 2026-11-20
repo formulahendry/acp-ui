@@ -17,6 +17,8 @@ import type {
   NewSessionResponse,
   LoadSessionRequest,
   LoadSessionResponse,
+  ListSessionsRequest,
+  ListSessionsResponse,
   PromptRequest,
   PromptResponse,
   CancelNotification,
@@ -331,6 +333,10 @@ export class AcpClientBridge implements Client {
 
   async loadSession(params: LoadSessionRequest): Promise<LoadSessionResponse> {
     return this.sendRequest<LoadSessionResponse>('session/load', params);
+  }
+
+  async unstable_listSessions(params: ListSessionsRequest): Promise<ListSessionsResponse> {
+    return this.sendRequest<ListSessionsResponse>('session/list', params);
   }
 
   async prompt(params: PromptRequest): Promise<PromptResponse> {

@@ -10,7 +10,7 @@ import { AcpClientBridge, createAcpClient } from '../lib/acp-bridge';
 import { onAgentStderr, spawnAgent, killAgent } from '../lib/host';
 import { isDesktop } from '../lib/platform';
 import { useConfigStore } from './config';
-import type { SessionNotification, AuthMethod } from '@agentclientprotocol/sdk';
+import type { SessionNotification, AuthMethod, SessionInfo, InitializeResponse } from '@agentclientprotocol/sdk';
 
 const STORE_PATH = 'sessions.json';
 const PROTOCOL_VERSION = 1;
@@ -57,6 +57,9 @@ export const useSessionStore = defineStore('session', () => {
   const pendingAuthMethods = ref<AuthMethod[]>([]);
   const pendingAuthAgentName = ref<string>('');
   let authMethodResolver: ((methodId: string | null) => void) | null = null;
+
+  // Manual session sync state
+  const isSyncingSessions = ref(false);
   
   // Session modes
   const availableModes = ref<SessionMode[]>([]);
@@ -71,6 +74,10 @@ export const useSessionStore = defineStore('session', () => {
   
   // Connection cancellation
   let connectionAborted = false;
+
+  // Agent currently being connected (create/resume in flight). Used by
+  // syncAgentSessions to avoid opening a second transport to it.
+  let connectingAgentName: string | null = null;
   
   // Startup progress tracking
   const startupPhase = ref<string>('starting');
@@ -113,6 +120,110 @@ export const useSessionStore = defineStore('session', () => {
       await store.set('sessions', savedSessions.value);
       await store.save();
     }
+  }
+
+  function buildInitializeParams() {
+    // Only Tauri desktop has real filesystem access; mobile and web
+    // cannot fulfil readTextFile / writeTextFile RPCs.
+    const canAccessFs = isDesktop();
+    return {
+      protocolVersion: PROTOCOL_VERSION,
+      clientCapabilities: {
+        fs: {
+          readTextFile: canAccessFs,
+          writeTextFile: canAccessFs,
+        },
+      },
+      clientInfo: {
+        name: 'acp-ui',
+        title: 'ACP UI',
+        version: appVersion,
+      },
+    };
+  }
+
+  // Merge sessions reported by an agent's `session/list` into the local
+  // saved list, deduplicating on (agentName, sessionId). Returns the
+  // number of newly added entries.
+  function mergeAgentSessions(
+    agentName: string,
+    agentSessions: SessionInfo[],
+    supportsLoadSession: boolean
+  ): number {
+    let added = 0;
+    for (const info of agentSessions) {
+      const existing = savedSessions.value.find(
+        (s) => s.agentName === agentName && s.sessionId === info.sessionId
+      );
+      const parsed = info.updatedAt ? Date.parse(info.updatedAt) : NaN;
+      const updatedAt = Number.isFinite(parsed) ? parsed : Date.now();
+      if (existing) {
+        if (info.title) existing.title = info.title;
+        if (info.cwd) existing.cwd = info.cwd;
+        existing.lastUpdated = Math.max(existing.lastUpdated, updatedAt);
+        existing.supportsLoadSession =
+          supportsLoadSession || existing.supportsLoadSession;
+      } else {
+        savedSessions.value.push({
+          id: crypto.randomUUID(),
+          agentName,
+          sessionId: info.sessionId,
+          title: info.title || `Session ${new Date(updatedAt).toLocaleString()}`,
+          lastUpdated: updatedAt,
+          cwd: info.cwd,
+          supportsLoadSession,
+        });
+        added++;
+      }
+    }
+    return added;
+  }
+
+  // Fetch every page of `session/list` for an initialized client.
+  async function listAllAgentSessions(client: AcpClientBridge): Promise<SessionInfo[]> {
+    const all: SessionInfo[] = [];
+    let cursor: string | undefined;
+    // Bound the loop: well-behaved agents always terminate via an absent
+    // nextCursor, this is only a safety net against a buggy one.
+    for (let page = 0; page < 20; page++) {
+      const res = await client.unstable_listSessions({ cursor: cursor ?? null });
+      if (res.sessions?.length) all.push(...res.sessions);
+      cursor = res.nextCursor ?? undefined;
+      if (!cursor) break;
+    }
+    return all;
+  }
+
+  // Fetch `session/list` pages and merge them into the saved list.
+  // Best-effort: listing is a nice-to-have and must never break session
+  // creation/resume, so all failures are swallowed with a warning.
+  async function fetchAndMergeAgentSessions(
+    client: AcpClientBridge,
+    agentName: string,
+    supportsLoadSession: boolean
+  ): Promise<void> {
+    try {
+      const sessions = await listAllAgentSessions(client);
+      const added = mergeAgentSessions(agentName, sessions, supportsLoadSession);
+      if (sessions.length > 0) await saveSessionsToStore();
+      if (added > 0) {
+        trackEvent('AgentSessionsSynced', { agentName, added: String(added) });
+      }
+    } catch (e) {
+      console.warn(`session/list failed for agent '${agentName}':`, e);
+    }
+  }
+
+  // Pull `session/list` after initialize when the agent advertises the
+  // capability.
+  async function syncSessionsFromClient(
+    client: AcpClientBridge,
+    agentName: string,
+    initResponse: InitializeResponse
+  ): Promise<void> {
+    if (!initResponse.agentCapabilities?.sessionCapabilities?.list) return;
+    const supportsLoadSession = initResponse.agentCapabilities?.loadSession ?? false;
+    await fetchAndMergeAgentSessions(client, agentName, supportsLoadSession);
   }
 
   // Handle an unexpected transport close (e.g. WebSocket dropped while idle,
@@ -319,6 +430,7 @@ export const useSessionStore = defineStore('session', () => {
       if (!agentConfig) {
         throw new Error(`Agent '${agentName}' not found in config`);
       }
+      connectingAgentName = agentName;
 
       if (!isRemote) {
         // For stdio agents we need the spawned process's id up front so the
@@ -396,29 +508,16 @@ export const useSessionStore = defineStore('session', () => {
       startupPhase.value = 'connecting';
 
       // Initialize connection
-      // Only Tauri desktop has real filesystem access; mobile and web
-      // cannot fulfil readTextFile / writeTextFile RPCs.
-      const canAccessFs = isDesktop();
-
-      const initResponse = await acpClient.initialize({
-        protocolVersion: PROTOCOL_VERSION,
-        clientCapabilities: {
-          fs: {
-            readTextFile: canAccessFs,
-            writeTextFile: canAccessFs,
-          },
-        },
-        clientInfo: {
-          name: 'acp-ui',
-          title: 'ACP UI',
-          version: appVersion,
-        },
-      });
+      const initResponse = await acpClient.initialize(buildInitializeParams());
 
       console.log('Agent initialized:', initResponse);
 
       // Check if agent supports session loading
       const supportsLoadSession = initResponse.agentCapabilities?.loadSession ?? false;
+
+      // Merge sessions the agent already knows about (e.g. created via its
+      // CLI or on another device) into the saved list. Best-effort.
+      await syncSessionsFromClient(acpClient, agentName, initResponse);
 
       if (connectionAborted) {
         await acpClient.disconnect();
@@ -553,6 +652,7 @@ export const useSessionStore = defineStore('session', () => {
     } finally {
       isLoading.value = false;
       isConnecting.value = false;
+      connectingAgentName = null;
       // Clean up startup progress tracking
       if (startupTimer) {
         clearInterval(startupTimer);
@@ -576,6 +676,7 @@ export const useSessionStore = defineStore('session', () => {
       if (!agentConfig) {
         throw new Error(`Agent '${savedSession.agentName}' not found in config`);
       }
+      connectingAgentName = savedSession.agentName;
 
       // Create ACP client bridge (transport selected based on agent config).
       acpClient = await createAcpClient({
@@ -599,28 +700,15 @@ export const useSessionStore = defineStore('session', () => {
         { immediate: true }
       );
 
-      // Only Tauri desktop has real filesystem access; mobile and web
-      // cannot fulfil readTextFile / writeTextFile RPCs.
-      const canAccessFs = isDesktop();
-
       // Initialize connection
-      const initResponse = await acpClient.initialize({
-        protocolVersion: PROTOCOL_VERSION,
-        clientCapabilities: {
-          fs: {
-            readTextFile: canAccessFs,
-            writeTextFile: canAccessFs,
-          },
-        },
-        clientInfo: {
-          name: 'acp-ui',
-          title: 'ACP UI',
-          version: appVersion,
-        },
-      });
+      const initResponse = await acpClient.initialize(buildInitializeParams());
 
       // Store available auth methods for potential retry
       const availableAuthMethods = initResponse.authMethods || [];
+
+      // Merge sessions the agent already knows about into the saved list.
+      // Best-effort — must not interfere with the resume flow.
+      await syncSessionsFromClient(acpClient, savedSession.agentName, initResponse);
 
       // Clear messages BEFORE loadSession - the agent will stream replay via notifications
       messages.value = [];
@@ -697,6 +785,7 @@ export const useSessionStore = defineStore('session', () => {
       throw e;
     } finally {
       isLoading.value = false;
+      connectingAgentName = null;
     }
   }
 
@@ -863,6 +952,51 @@ export const useSessionStore = defineStore('session', () => {
     error.value = null;
   }
 
+  // Manually sync the saved-session list from one or all configured
+  // agents. `session/list` requires an initialized connection, so this
+  // opens a temporary connection per agent — except for the currently
+  // connected one, which is reused (a second transport to the same agent
+  // could disturb it, e.g. single-client bridges).
+  async function syncAgentSessions(agentName?: string): Promise<void> {
+    if (isSyncingSessions.value) return;
+    const configStore = useConfigStore();
+    const names = agentName ? [agentName] : configStore.agentNames;
+    isSyncingSessions.value = true;
+    try {
+      for (const name of names) {
+        // Skip agents with a connect/resume in flight — opening a second
+        // transport to them could disturb the pending connection.
+        if (name === connectingAgentName) continue;
+        const agentConfig = configStore.getAgent(name);
+        if (!agentConfig) continue;
+        try {
+          if (acpClient && currentSession.value?.agentName === name) {
+            // Reuse the live connection; the agent's initialize response
+            // isn't retained, so try `session/list` and tolerate agents
+            // that don't implement it.
+            await fetchAndMergeAgentSessions(
+              acpClient,
+              name,
+              currentSession.value?.supportsLoadSession ?? false
+            );
+          } else {
+            const client = await createAcpClient({ name, config: agentConfig });
+            try {
+              const initResponse = await client.initialize(buildInitializeParams());
+              await syncSessionsFromClient(client, name, initResponse);
+            } finally {
+              await client.disconnect().catch(() => {});
+            }
+          }
+        } catch (e) {
+          console.warn(`session sync failed for agent '${name}':`, e);
+        }
+      }
+    } finally {
+      isSyncingSessions.value = false;
+    }
+  }
+
   /**
    * Foreground reconnect: when the user returns to the app and we're
    * disconnected (because the OS froze the WebView, the NAT killed the TCP
@@ -929,6 +1063,7 @@ export const useSessionStore = defineStore('session', () => {
     pendingPermission,
     pendingAuthMethods,
     pendingAuthAgentName,
+    isSyncingSessions,
     availableModes,
     currentModeId,
     availableCommands,
@@ -957,6 +1092,7 @@ export const useSessionStore = defineStore('session', () => {
     cancelAuthSelection,
     disconnect,
     deleteSession,
+    syncAgentSessions,
     setMode,
     setModel,
     clearError,

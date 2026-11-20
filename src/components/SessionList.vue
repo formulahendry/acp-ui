@@ -29,11 +29,25 @@ function handleDelete(sessionId: string, event: Event) {
     emit('delete', sessionId);
   }
 }
+
+async function handleSync() {
+  await sessionStore.syncAgentSessions();
+}
 </script>
 
 <template>
   <div class="session-list">
-    <h3>Saved Sessions</h3>
+    <div class="session-list-header">
+      <h3>Saved Sessions</h3>
+      <button
+        class="sync-btn"
+        :disabled="sessionStore.isSyncingSessions"
+        @click="handleSync"
+        title="Fetch sessions from configured agents"
+      >
+        {{ sessionStore.isSyncingSessions ? 'Syncing…' : 'Sync' }}
+      </button>
+    </div>
     
     <div v-if="sessions.length === 0" class="empty-state">
       <p>No saved sessions yet.</p>
@@ -67,6 +81,36 @@ function handleDelete(sessionId: string, event: Event) {
 <style scoped>
 .session-list {
   padding: 1rem;
+}
+
+.session-list-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.session-list-header h3 {
+  margin: 0;
+}
+
+.sync-btn {
+  padding: 0.25rem 0.6rem;
+  border: 1px solid var(--border-color, #e0e0e0);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary, #666);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.sync-btn:hover:not(:disabled) {
+  background: var(--bg-hover, #f5f5f5);
+}
+
+.sync-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 h3 {
