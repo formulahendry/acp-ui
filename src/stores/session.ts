@@ -226,6 +226,23 @@ export const useSessionStore = defineStore('session', () => {
     await fetchAndMergeAgentSessions(client, agentName, supportsLoadSession);
   }
 
+  // Disconnect the current client before opening a new transport.
+  // Single-client bridges (e.g. a WS→stdio proxy that allows one client)
+  // close the old socket when the new one connects; if we didn't detach
+  // first, that close event would race the new-client assignment and trip
+  // handleUnexpectedClose on the *new* client.
+  async function disconnectCurrentClient(): Promise<void> {
+    const client = acpClient;
+    if (!client) return;
+    acpClient = null;
+    client.onTransportClose = null;
+    try {
+      await client.disconnect();
+    } catch (e) {
+      console.warn('Failed to disconnect previous client:', e);
+    }
+  }
+
   // Handle an unexpected transport close (e.g. WebSocket dropped while idle,
   // local agent process exited). The bridge has already rejected any
   // in-flight requests; we just need to tear down UI state so the user gets
@@ -431,6 +448,9 @@ export const useSessionStore = defineStore('session', () => {
         throw new Error(`Agent '${agentName}' not found in config`);
       }
       connectingAgentName = agentName;
+
+      // Close any existing client before opening a new transport.
+      await disconnectCurrentClient();
 
       if (!isRemote) {
         // For stdio agents we need the spawned process's id up front so the
@@ -677,6 +697,9 @@ export const useSessionStore = defineStore('session', () => {
         throw new Error(`Agent '${savedSession.agentName}' not found in config`);
       }
       connectingAgentName = savedSession.agentName;
+
+      // Close any existing client before opening a new transport.
+      await disconnectCurrentClient();
 
       // Create ACP client bridge (transport selected based on agent config).
       acpClient = await createAcpClient({
